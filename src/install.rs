@@ -42,11 +42,28 @@ pub fn install(config: &mut Config) {
         // Egg hatches into companion ("An egg appeared..." shown below egg)
         let _ = companion::animate::play_hatch(&c);
 
-        // Now redraw companion with title beside it — move cursor up over the companion
+        // Move cursor up over the companion area + any hat/extra lines from hatch
+        // The hatch draws without hat, but animate_title redraws with hat.
+        // Go up enough to cover the full area and clear any leftover lines.
         let sprite_height = crate::companion::render::render_sprite(&c, 0).len();
+        // Move up sprite height + 2 extra lines to clear any hat/sparkle leftovers
+        let clear_height = sprite_height + 2;
         let _ = crossterm::execute!(
             std::io::stdout(),
-            crossterm::cursor::MoveUp(sprite_height as u16)
+            crossterm::cursor::MoveUp(clear_height as u16)
+        );
+        // Clear those lines
+        for _ in 0..clear_height {
+            let _ = crossterm::execute!(
+                std::io::stdout(),
+                crossterm::cursor::MoveToColumn(0),
+                crossterm::terminal::Clear(crossterm::terminal::ClearType::CurrentLine)
+            );
+            println!();
+        }
+        let _ = crossterm::execute!(
+            std::io::stdout(),
+            crossterm::cursor::MoveUp(clear_height as u16)
         );
 
         // Title types in to the right of companion
