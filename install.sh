@@ -66,13 +66,19 @@ main() {
         *) export PATH="$HOME/.local/bin:$PATH" ;;
     esac
 
-    # Use `script` to allocate a fresh PTY so the TUI gets real terminal fds.
-    # This is the only reliable way to escape a pipe context on macOS/Linux.
-    if [ "$(uname -s)" = "Darwin" ]; then
-        script -q /dev/null "$DEST" --install
+    echo ""
+    echo "  Installed clawdshell to $DEST"
+    echo ""
+
+    # If we have a real terminal, run --install directly with the TUI
+    if [ -t 0 ] && [ -t 1 ]; then
+        "$DEST" --install
     else
-        # Linux script has different syntax
-        script -qc "$DEST --install" /dev/null
+        # Piped context (curl | bash) — can't run interactive TUI
+        echo "  Run the setup wizard:"
+        echo ""
+        echo "    clawdshell --install"
+        echo ""
     fi
 }
 
