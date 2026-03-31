@@ -20,38 +20,20 @@
 
 ## Install
 
-<table>
-<tr>
-<td><b>macOS / Linux</b></td>
-<td>
-
-```bash
+**macOS / Linux / WSL:**
+```sh
 curl -fsSL https://clawdshell.sh | sh
 ```
 
-</td>
-</tr>
-<tr>
-<td><b>Windows (PowerShell)</b></td>
-<td>
-
+**Windows (PowerShell):**
 ```powershell
 irm https://clawdshell.sh | iex
 ```
 
-</td>
-</tr>
-<tr>
-<td><b>Windows (CMD)</b></td>
-<td>
-
+**Windows (CMD):**
 ```cmd
 curl -fsSL https://clawdshell.sh/install.cmd -o install.cmd && install.cmd && del install.cmd
 ```
-
-</td>
-</tr>
-</table>
 
 Or grab a binary from [Releases](https://github.com/coffecup25/clawdshell/releases) and run `clawdshell --install`.
 
