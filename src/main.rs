@@ -98,11 +98,16 @@ fn main() {
         return;
     }
 
+    let shell = get_fallback_shell(&config);
+
+    // Inherit the user's shell environment (PATH, etc.) so we can find tools
+    // that are installed via nvm, cargo, homebrew, etc.
+    clawdshell::detect::inherit_shell_environment(&shell);
+
     let tool_name = config.defaults.tool.clone();
     let tool_config = config.tools.get(&tool_name);
     let command_override = tool_config.and_then(|tc| tc.command.as_deref());
     let tool_path = clawdshell::detect::resolve_tool_binary(&tool_name, command_override);
-    let shell = get_fallback_shell(&config);
 
     // Show greeting
     if config.companion.enabled {
