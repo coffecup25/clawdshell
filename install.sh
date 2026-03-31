@@ -7,6 +7,11 @@ set -e
 VERSION="${CLAWDSHELL_VERSION:-latest}"
 REPO="${CLAWDSHELL_REPO:-coffecup25/clawdshell}"
 
+ORANGE='\033[38;2;217;119;87m'
+BOLD='\033[1m'
+DIM='\033[2m'
+RESET='\033[0m'
+
 detect_platform() {
     OS="$(uname -s)"
     ARCH="$(uname -m)"
@@ -14,12 +19,12 @@ detect_platform() {
         Linux*)  OS="linux" ;;
         Darwin*) OS="darwin" ;;
         MINGW*|MSYS*|CYGWIN*) OS="windows" ;;
-        *) echo "Unsupported OS: $OS"; exit 1 ;;
+        *) printf "${ORANGE}Unsupported OS: %s${RESET}\n" "$OS"; exit 1 ;;
     esac
     case "$ARCH" in
         x86_64|amd64) ARCH="x86_64" ;;
         aarch64|arm64) ARCH="aarch64" ;;
-        *) echo "Unsupported architecture: $ARCH"; exit 1 ;;
+        *) printf "${ORANGE}Unsupported architecture: %s${RESET}\n" "$ARCH"; exit 1 ;;
     esac
     echo "${OS}-${ARCH}"
 }
@@ -37,18 +42,26 @@ main() {
     fi
     DEST="${INSTALL_DIR}/clawdshell"
 
-    echo "Downloading clawdshell for ${PLATFORM}..."
+    printf "\n"
+    printf "  ${BOLD}${ORANGE}clawdshell${RESET} ${DIM}installer${RESET}\n"
+    printf "  ${DIM}%s${RESET}\n" "$PLATFORM"
+    printf "\n"
+    printf "  ${DIM}Downloading...${RESET}"
 
     if command -v curl >/dev/null 2>&1; then
         curl -fsSL "$DOWNLOAD_URL" -o "$DEST" || {
-            echo "Download failed: $DOWNLOAD_URL"
-            echo "Make sure a release exists at https://github.com/${REPO}/releases"
+            printf "\r  ${ORANGE}Download failed.${RESET}                    \n"
+            printf "  ${DIM}%s${RESET}\n" "$DOWNLOAD_URL"
             exit 1
         }
     elif command -v wget >/dev/null 2>&1; then
-        wget -q "$DOWNLOAD_URL" -O "$DEST" || { echo "Download failed."; exit 1; }
+        wget -q "$DOWNLOAD_URL" -O "$DEST" || {
+            printf "\r  ${ORANGE}Download failed.${RESET}                    \n"
+            exit 1
+        }
     else
-        echo "Error: curl or wget required"; exit 1
+        printf "\r  ${ORANGE}curl or wget required${RESET}                  \n"
+        exit 1
     fi
 
     chmod +x "$DEST"
@@ -66,9 +79,7 @@ main() {
         *) export PATH="$HOME/.local/bin:$PATH" ;;
     esac
 
-    echo ""
-    echo "  Installed clawdshell to $DEST"
-    echo ""
+    printf "\r  ${ORANGE}✓${RESET} Downloaded to ${DIM}%s${RESET}          \n\n" "$DEST"
 
     # Run the interactive installer
     "$DEST" --install
