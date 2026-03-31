@@ -41,7 +41,7 @@ pub fn play_idle(companion: &Companion, ticks: usize) -> io::Result<()> {
 }
 
 // Egg frames
-const EGG_FRAMES: &[&[&str]] = &[
+pub const EGG_FRAMES: &[&[&str]] = &[
     // 0: intact
     &[
         "            ",

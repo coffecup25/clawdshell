@@ -1,12 +1,20 @@
 use crate::companion;
+use crate::companion::animate::EGG_FRAMES;
 use crate::companion::Companion;
 use crate::config::Config;
 use crate::detect;
 use crate::greeting;
+use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use crossterm::{cursor, execute, terminal};
 use dialoguer::{Confirm, Select};
+use ratatui::layout::Rect;
+use ratatui::style::{Color, Modifier, Style};
+use ratatui::text::{Line, Span};
+use ratatui::widgets::Paragraph;
+use ratatui::Terminal;
 use std::io::Write;
 use std::process::Command;
+use std::time::{Duration, Instant};
 
 const BOLD: &str = "\x1b[1m";
 const DIM: &str = "\x1b[2m";
@@ -15,7 +23,8 @@ const CYAN: &str = "\x1b[36m";
 const YELLOW: &str = "\x1b[33m";
 const RED: &str = "\x1b[31m";
 const RESET: &str = "\x1b[0m";
-const NICE_ORANGE: &str = "\x1b[38;2;217;119;87m";
+const NICE_ORANGE_ANSI: &str = "\x1b[38;2;217;119;87m";
+const NICE_ORANGE: Color = Color::Rgb(217, 119, 87);
 
 const IDLE_SEQUENCE: &[i8] = &[0, 0, 0, 0, 1, 0, 0, 0, -1, 0, 0, 2, 0, 0, 0];
 
@@ -42,7 +51,7 @@ fn ensure_claude_code(companion: &Companion) {
 
     println!(
         "  {}Installing Claude Code...{}\n",
-        NICE_ORANGE, RESET
+        NICE_ORANGE_ANSI, RESET
     );
 
     // Spawn npm install in the background
@@ -137,7 +146,7 @@ fn ensure_claude_code(companion: &Companion) {
         write!(
             stdout,
             "  {}{}{}  Installing Claude Code...",
-            NICE_ORANGE, bar, RESET
+            NICE_ORANGE_ANSI, bar, RESET
         )
         .ok();
         let _ = execute!(stdout, terminal::Clear(terminal::ClearType::UntilNewLine));
@@ -203,77 +212,285 @@ fn generate_seed() -> String {
     )
 }
 
+// ── Hatching animation phases ──────────────────────────────────────────────
+
+#[derive(Clone, Copy, PartialEq)]
+enum HatchPhase {
+    Egg,       // egg animation frames
+    Reveal,    // companion revealed, title typing in
+    Hatched,   // final state with selection
+}
+
+/// Run Screen 1 (egg hatching, title animation, companion selection) using ratatui.
+/// Returns `true` if the user chose to reroll.
+fn run_hatch_screen(companion: &Companion) -> bool {
+    // Set up ratatui terminal on alternate screen
+    let mut terminal = ratatui::init();
+    let result = hatch_render_loop(&mut terminal, companion);
+    ratatui::restore();
+    result
+}
+
+fn hatch_render_loop(
+    terminal: &mut Terminal<ratatui::backend::CrosstermBackend<std::io::Stdout>>,
+    companion: &Companion,
+) -> bool {
+    let egg_sequence: &[usize] = &[0, 1, 2, 1, 2, 3, 4, 5, 6, 7];
+    let egg_timing: &[u64] = &[800, 300, 300, 300, 300, 600, 600, 400, 400, 300];
+
+    let mut phase = HatchPhase::Egg;
+    let mut egg_frame_idx: usize = 0;
+    let mut phase_start = Instant::now();
+    let mut title_chars: usize = 0;
+    let mut selection: usize = 0; // 0 = Keep, 1 = Reroll
+
+    // Pre-render sprite lines
+    let sprite_lines = companion::render::render_sprite(companion, 0);
+
+    loop {
+        // Draw
+        let _ = terminal.draw(|frame| {
+            let area = frame.area();
+
+            match phase {
+                HatchPhase::Egg => {
+                    render_egg_frame(frame, area, egg_sequence[egg_frame_idx]);
+                }
+                HatchPhase::Reveal => {
+                    render_companion_with_title(frame, area, &sprite_lines, title_chars, companion, false, 0);
+                }
+                HatchPhase::Hatched => {
+                    render_companion_with_title(frame, area, &sprite_lines, 10, companion, true, selection);
+                }
+            }
+        });
+
+        // Phase transitions
+        match phase {
+            HatchPhase::Egg => {
+                let delay = egg_timing[egg_frame_idx];
+                if phase_start.elapsed() >= Duration::from_millis(delay) {
+                    egg_frame_idx += 1;
+                    if egg_frame_idx >= egg_sequence.len() {
+                        // Transition to reveal
+                        phase = HatchPhase::Reveal;
+                        title_chars = 0;
+                        phase_start = Instant::now();
+                    } else {
+                        phase_start = Instant::now();
+                    }
+                }
+                // Drain any key events during egg animation (don't block)
+                if event::poll(Duration::from_millis(30)).unwrap_or(false) {
+                    let _ = event::read();
+                }
+            }
+            HatchPhase::Reveal => {
+                if title_chars < 10 {
+                    let delay = if title_chars < 3 {
+                        60
+                    } else if title_chars < 7 {
+                        40
+                    } else {
+                        25
+                    };
+                    if phase_start.elapsed() >= Duration::from_millis(delay) {
+                        title_chars += 1;
+                        phase_start = Instant::now();
+                    }
+                    // Drain events
+                    if event::poll(Duration::from_millis(10)).unwrap_or(false) {
+                        let _ = event::read();
+                    }
+                } else {
+                    // Title fully revealed — move to hatched
+                    phase = HatchPhase::Hatched;
+                    selection = 0;
+                }
+            }
+            HatchPhase::Hatched => {
+                // Handle keyboard input for selection
+                if event::poll(Duration::from_millis(50)).unwrap_or(false) {
+                    if let Ok(Event::Key(key)) = event::read() {
+                        if key.kind == KeyEventKind::Press {
+                            match key.code {
+                                KeyCode::Up | KeyCode::Char('k') => {
+                                    selection = 0;
+                                }
+                                KeyCode::Down | KeyCode::Char('j') => {
+                                    selection = 1;
+                                }
+                                KeyCode::Enter => {
+                                    return selection == 1; // true = reroll
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        std::thread::sleep(Duration::from_millis(16)); // ~60fps cap
+    }
+}
+
+/// Render an egg frame centered on screen with "An egg appeared..." below.
+fn render_egg_frame(frame: &mut ratatui::Frame, area: Rect, egg_idx: usize) {
+    let egg = EGG_FRAMES[egg_idx];
+    let egg_height = egg.len() as u16;
+    let total_height = egg_height + 2; // egg + blank + label
+
+    // Center vertically
+    let y_start = area.height.saturating_sub(total_height) / 2;
+
+    // Build lines
+    let mut lines: Vec<Line> = Vec::new();
+    for row in egg {
+        lines.push(Line::from(Span::raw(format!("  {}", row))));
+    }
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
+        "  An egg appeared...",
+        Style::default().add_modifier(Modifier::DIM),
+    )));
+
+    let paragraph = Paragraph::new(lines);
+    let egg_area = Rect::new(area.x, area.y + y_start, area.width, total_height);
+    frame.render_widget(paragraph, egg_area);
+}
+
+/// Render companion sprite + CLAWDSHELL title (partially or fully revealed),
+/// plus optional hatched message and selection.
+fn render_companion_with_title(
+    frame: &mut ratatui::Frame,
+    area: Rect,
+    sprite_lines: &[String],
+    title_chars: usize,
+    companion: &Companion,
+    show_hatched: bool,
+    selection: usize,
+) {
+    let logo_lines = greeting::build_partial_logo(title_chars);
+    let logo_height = greeting::LETTER_HEIGHT;
+    let sprite_height = sprite_lines.len();
+    let row_count = sprite_height.max(logo_height);
+
+    // Calculate total content height
+    let mut total_lines: usize = row_count; // companion + title rows
+    if show_hatched {
+        total_lines += 5; // tagline + blank + hatched msg + blank + selection (2 items)
+    }
+
+    // Center vertically
+    let y_start = (area.height as usize).saturating_sub(total_lines) / 2;
+
+    let mut lines: Vec<Line> = Vec::new();
+
+    // Companion sprite side-by-side with logo
+    for i in 0..row_count {
+        let sprite_part = if i < sprite_height {
+            &sprite_lines[i]
+        } else {
+            "            "
+        };
+        let logo_part = if i < logo_height {
+            &logo_lines[i]
+        } else {
+            ""
+        };
+
+        let spans = vec![
+            Span::raw(format!(" {}  ", sprite_part)),
+            Span::styled(
+                logo_part.to_string(),
+                Style::default()
+                    .fg(NICE_ORANGE)
+                    .add_modifier(Modifier::BOLD),
+            ),
+        ];
+        lines.push(Line::from(spans));
+    }
+
+    if show_hatched {
+        // Tagline
+        lines.push(Line::from(Span::styled(
+            "  you weren't using your terminal anyways",
+            Style::default().add_modifier(Modifier::DIM),
+        )));
+        lines.push(Line::from(""));
+
+        // Hatched message
+        lines.push(Line::from(vec![
+            Span::styled("  ", Style::default().add_modifier(Modifier::BOLD)),
+            Span::styled(
+                format!("✨ {} hatched! ✨", companion.name),
+                Style::default()
+                    .fg(NICE_ORANGE)
+                    .add_modifier(Modifier::BOLD),
+            ),
+        ]));
+        lines.push(Line::from(""));
+
+        // Selection
+        let keep_style = if selection == 0 {
+            Style::default()
+                .fg(NICE_ORANGE)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().add_modifier(Modifier::DIM)
+        };
+        let reroll_style = if selection == 1 {
+            Style::default()
+                .fg(NICE_ORANGE)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().add_modifier(Modifier::DIM)
+        };
+
+        let keep_prefix = if selection == 0 { "> " } else { "  " };
+        let reroll_prefix = if selection == 1 { "> " } else { "  " };
+
+        lines.push(Line::from(Span::styled(
+            format!("  {} Keep this companion", keep_prefix),
+            keep_style,
+        )));
+        lines.push(Line::from(Span::styled(
+            format!("  {} Reroll companion", reroll_prefix),
+            reroll_style,
+        )));
+    }
+
+    let content_area = Rect::new(
+        area.x,
+        area.y + y_start as u16,
+        area.width,
+        (lines.len() as u16).min(area.height.saturating_sub(y_start as u16)),
+    );
+    let paragraph = Paragraph::new(lines);
+    frame.render_widget(paragraph, content_area);
+}
+
 pub fn install(config: &mut Config) {
     let width = crossterm::terminal::size().map(|(w, _)| w).unwrap_or(80);
 
-    // --- Companion hatching & selection ---
+    // --- Companion hatching & selection (Screen 1 — ratatui) ---
     // Always generate a fresh seed for install — this is the onboarding experience
     config.companion.seed = Some(generate_seed());
 
     loop {
         let c = companion::generate(config.companion.seed.as_deref().unwrap());
 
-        // Enter alternate screen — nothing here touches scrollback
-        let _ = execute!(std::io::stdout(), terminal::EnterAlternateScreen);
-        print!("\x1b[H");
-        let _ = std::io::stdout().flush();
-        println!();
+        let reroll = run_hatch_screen(&c);
 
-        // Egg hatches into companion ("An egg appeared..." shown below egg)
-        let _ = companion::animate::play_hatch(&c);
-
-        // Move cursor up over the companion area + any hat/extra lines from hatch
-        // The hatch draws without hat, but animate_title redraws with hat.
-        // Go up enough to cover the full area and clear any leftover lines.
-        let sprite_height = crate::companion::render::render_sprite(&c, 0).len();
-        // Move up sprite height + 2 extra lines to clear any hat/sparkle leftovers
-        let clear_height = sprite_height + 2;
-        let _ = crossterm::execute!(
-            std::io::stdout(),
-            crossterm::cursor::MoveUp(clear_height as u16)
-        );
-        // Clear those lines
-        for _ in 0..clear_height {
-            let _ = crossterm::execute!(
-                std::io::stdout(),
-                crossterm::cursor::MoveToColumn(0),
-                crossterm::terminal::Clear(crossterm::terminal::ClearType::CurrentLine)
-            );
-            println!();
-        }
-        let _ = crossterm::execute!(
-            std::io::stdout(),
-            crossterm::cursor::MoveUp(clear_height as u16)
-        );
-
-        // Title types in to the right of companion
-        let _ = greeting::animate_title(&c);
-
-        println!("  {}you weren't using your terminal anyways{}", DIM, RESET);
-        println!();
-        println!(
-            "  {}✨ {}{}{} hatched! ✨{}",
-            BOLD, NICE_ORANGE, c.name, RESET, RESET
-        );
-
-        println!();
-        let reroll = Select::new()
-            .items(&["Keep this companion", "Reroll companion"])
-            .default(0)
-            .interact()
-            .unwrap_or(0);
-
-        // Leave alternate screen — back to normal scrollback
-        let _ = execute!(std::io::stdout(), terminal::LeaveAlternateScreen);
-
-        if reroll == 1 {
+        if reroll {
             config.companion.seed = Some(generate_seed());
             continue;
         }
         break;
     }
 
-    // --- Setup ---
+    // --- Setup (Screen 2 — normal scrolling terminal) ---
     print!("\x1b[2J\x1b[H");
     let c = companion::generate(config.companion.seed.as_deref().unwrap());
     print!("{}", greeting::render_greeting("", "", &c, width));
@@ -282,7 +499,7 @@ pub fn install(config: &mut Config) {
         "{}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{}",
         DIM, RESET
     );
-    println!("  {}{}Setup{}\n", BOLD, NICE_ORANGE, RESET);
+    println!("  {}{}Setup{}\n", BOLD, NICE_ORANGE_ANSI, RESET);
 
     let current_exe = std::env::current_exe().expect("Failed to get executable path");
     let exe_path = current_exe.to_string_lossy().to_string();
@@ -349,12 +566,12 @@ pub fn install(config: &mut Config) {
         config_path.display()
     );
 
-    // --- Shell Registration ---
+    // --- Shell Registration (Screen 3 — normal scrolling terminal) ---
     println!(
         "{}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{}",
         DIM, RESET
     );
-    println!("  {}{}Shell Registration{}\n", BOLD, NICE_ORANGE, RESET);
+    println!("  {}{}Shell Registration{}\n", BOLD, NICE_ORANGE_ANSI, RESET);
 
     #[cfg(unix)]
     unix_install(&exe_path);
@@ -373,7 +590,7 @@ pub fn install(config: &mut Config) {
 }
 
 pub fn uninstall(config: &Config) {
-    println!("\n  {}{}CLAWDSHELL{} — Uninstall", BOLD, NICE_ORANGE, RESET);
+    println!("\n  {}{}CLAWDSHELL{} — Uninstall", BOLD, NICE_ORANGE_ANSI, RESET);
     println!(
         "{}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{}\n",
         DIM, RESET

@@ -19,6 +19,7 @@ toml = "0.8"
 dirs = "6"
 which = "7"
 crossterm = "0.28"
+ratatui = "0.29"
 getrandom = "0.2"
 dialoguer = "0.11"
 

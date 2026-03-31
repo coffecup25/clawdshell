@@ -13,10 +13,10 @@ const NICE_ORANGE: &str = "\x1b[38;2;217;119;87m";
 // Each letter is 5 lines tall. Letters: C L A W D S H E L L
 // Using █ block characters for filled look.
 // Each letter is 6 chars wide (5 + 1 space separator).
-const LETTER_HEIGHT: usize = 5;
+pub const LETTER_HEIGHT: usize = 5;
 
 // Each letter is 8 chars wide, 5 tall. Thin strokes with ░ background shading.
-fn get_letter(ch: char) -> [&'static str; 5] {
+pub fn get_letter(ch: char) -> [&'static str; 5] {
     match ch {
         'C' => [
             "░░████░░",
@@ -85,7 +85,7 @@ fn get_letter(ch: char) -> [&'static str; 5] {
 }
 
 /// Build the full CLAWDSHELL text as 5 lines of block characters.
-fn build_logo_lines() -> [String; LETTER_HEIGHT] {
+pub fn build_logo_lines() -> [String; LETTER_HEIGHT] {
     let word = "CLAWDSHELL";
     let mut lines = [
         String::new(),
@@ -104,7 +104,7 @@ fn build_logo_lines() -> [String; LETTER_HEIGHT] {
 }
 
 /// Build partial logo (first N characters revealed) for animation.
-fn build_partial_logo(n_chars: usize) -> [String; LETTER_HEIGHT] {
+pub fn build_partial_logo(n_chars: usize) -> [String; LETTER_HEIGHT] {
     let word = "CLAWDSHELL";
     let chars: Vec<char> = word.chars().collect();
     let show = n_chars.min(chars.len());
