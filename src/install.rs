@@ -37,12 +37,17 @@ pub fn install(config: &mut Config) {
         print!("\x1b[2J\x1b[H");
         let _ = std::io::stdout().flush();
 
-        // Always play egg hatching — every companion hatches from an egg
+        // Play egg hatching animation
         println!();
         println!("  {}An egg appeared...{}\n", DIM, RESET);
         let _ = companion::animate::play_hatch(&c);
 
-        // Animate the title box in letter by letter, to the right of companion
+        // Brief pause, then clear screen for the title reveal
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        print!("\x1b[2J\x1b[H");
+        let _ = std::io::stdout().flush();
+
+        // Animate the title text to the right of companion
         let _ = greeting::animate_title(&c);
 
         println!();
