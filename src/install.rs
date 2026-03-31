@@ -35,38 +35,44 @@ fn ensure_claude_code(companion: &Companion) {
         return;
     }
 
-    // Check if npm is available
-    if which::which("npm").is_err() {
-        println!(
-            "  {}✗{} Claude Code not found and {}npm{} is not installed.",
-            YELLOW, RESET, BOLD, RESET
-        );
-        println!(
-            "    Install Node.js from: {}{}https://nodejs.org{}\n",
-            BOLD, CYAN, RESET
-        );
-        return;
-    }
-
     println!(
         "  {}Installing Claude Code...{}\n",
         NICE_ORANGE_ANSI, RESET
     );
 
-    // Spawn npm install in the background
-    let mut child = match Command::new("npm")
-        .args(["install", "-g", "@anthropic-ai/claude-code"])
+    // Use the official installer (works on macOS, Linux, WSL)
+    let mut child = match Command::new("bash")
+        .args(["-c", "curl -fsSL https://claude.ai/install.sh | bash"])
         .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
         .spawn()
     {
         Ok(c) => c,
-        Err(e) => {
-            println!(
-                "  {}✗{} Failed to start npm: {}\n",
-                RED, RESET, e
-            );
-            return;
+        Err(_) => {
+            // Fallback: try npm if bash/curl not available
+            if which::which("npm").is_err() {
+                println!(
+                    "  {}✗{} Could not install Claude Code automatically.",
+                    YELLOW, RESET
+                );
+                println!(
+                    "    Install manually: {}curl -fsSL https://claude.ai/install.sh | bash{}\n",
+                    DIM, RESET
+                );
+                return;
+            }
+            match Command::new("npm")
+                .args(["install", "-g", "@anthropic-ai/claude-code"])
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .spawn()
+            {
+                Ok(c) => c,
+                Err(e) => {
+                    println!("  {}✗{} Failed to install: {}\n", RED, RESET, e);
+                    return;
+                }
+            }
         }
     };
 
@@ -195,7 +201,7 @@ fn ensure_claude_code(companion: &Companion) {
                 RED, RESET
             );
             println!(
-                "    {}npm install -g @anthropic-ai/claude-code{}\n",
+                "    {}curl -fsSL https://claude.ai/install.sh | bash{}\n",
                 DIM, RESET
             );
         }
@@ -220,20 +226,27 @@ enum HatchPhase {
     Hatched,   // final state with selection
 }
 
+#[derive(Clone, Copy, PartialEq)]
+enum HatchResult {
+    Keep,
+    Reroll,
+    Quit,
+}
+
 /// Run Screen 1 (egg hatching, title animation, companion selection) using ratatui.
-/// Returns `true` if the user chose to reroll.
-fn run_hatch_screen(companion: &Companion) -> bool {
-    // Set up ratatui terminal on alternate screen
+fn run_hatch_screen(companion: &Companion) -> HatchResult {
     let mut terminal = ratatui::init();
     let result = hatch_render_loop(&mut terminal, companion);
     ratatui::restore();
+    // Ensure cursor is visible after ratatui exits
+    let _ = crossterm::execute!(std::io::stdout(), crossterm::cursor::Show);
     result
 }
 
 fn hatch_render_loop(
     terminal: &mut Terminal<ratatui::backend::CrosstermBackend<std::io::Stdout>>,
     companion: &Companion,
-) -> bool {
+) -> HatchResult {
     let egg_sequence: &[usize] = &[0, 1, 2, 1, 2, 3, 4, 5, 6, 7];
     let egg_timing: &[u64] = &[800, 300, 300, 300, 300, 600, 600, 400, 400, 300];
 
@@ -285,10 +298,9 @@ fn hatch_render_loop(
                         if key.kind == KeyEventKind::Press {
                             match key.code {
                                 KeyCode::Char('c') if key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) => {
-                                    std::process::exit(0);
+                                    return HatchResult::Quit;
                                 }
                                 KeyCode::Esc | KeyCode::Enter => {
-                                    // Skip to hatched state
                                     phase = HatchPhase::Hatched;
                                     title_chars = 10;
                                     selection = 0;
@@ -312,13 +324,12 @@ fn hatch_render_loop(
                         title_chars += 1;
                         phase_start = Instant::now();
                     }
-                    // Check for Ctrl+C / Esc / Enter to skip animation
                     if event::poll(Duration::from_millis(10)).unwrap_or(false) {
                         if let Ok(Event::Key(key)) = event::read() {
                             if key.kind == KeyEventKind::Press {
                                 match key.code {
                                     KeyCode::Char('c') if key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) => {
-                                        std::process::exit(0);
+                                        return HatchResult::Quit;
                                     }
                                     KeyCode::Esc | KeyCode::Enter => {
                                         title_chars = 10;
@@ -331,13 +342,11 @@ fn hatch_render_loop(
                         }
                     }
                 } else {
-                    // Title fully revealed — move to hatched
                     phase = HatchPhase::Hatched;
                     selection = 0;
                 }
             }
             HatchPhase::Hatched => {
-                // Handle keyboard input for selection
                 if event::poll(Duration::from_millis(50)).unwrap_or(false) {
                     if let Ok(Event::Key(key)) = event::read() {
                         if key.kind == KeyEventKind::Press {
@@ -349,13 +358,13 @@ fn hatch_render_loop(
                                     selection = 1;
                                 }
                                 KeyCode::Enter => {
-                                    return selection == 1; // true = reroll
+                                    return if selection == 1 { HatchResult::Reroll } else { HatchResult::Keep };
                                 }
                                 KeyCode::Char('c') if key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) => {
-                                    std::process::exit(0);
+                                    return HatchResult::Quit;
                                 }
-                                KeyCode::Esc => {
-                                    std::process::exit(0);
+                                KeyCode::Esc | KeyCode::Char('q') => {
+                                    return HatchResult::Quit;
                                 }
                                 _ => {}
                             }
@@ -551,13 +560,17 @@ pub fn install(config: &mut Config) {
     loop {
         let c = companion::generate(config.companion.seed.as_deref().unwrap());
 
-        let reroll = run_hatch_screen(&c);
-
-        if reroll {
-            config.companion.seed = Some(generate_seed());
-            continue;
+        match run_hatch_screen(&c) {
+            HatchResult::Reroll => {
+                config.companion.seed = Some(generate_seed());
+                continue;
+            }
+            HatchResult::Quit => {
+                println!("\n  {}Install cancelled.{}\n", DIM, RESET);
+                return;
+            }
+            HatchResult::Keep => break,
         }
-        break;
     }
 
     // --- Setup (Screen 2 — normal scrolling terminal) ---
