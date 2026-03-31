@@ -1,12 +1,8 @@
 #!/bin/sh
 set -e
 
-# ClawdShell installer — downloads the binary, then hands off to it
+# ClawdShell installer
 # Usage: curl -fsSL https://clawdshell.dev | bash
-#
-# Environment variables:
-#   CLAWDSHELL_VERSION  - version to install (default: latest)
-#   CLAWDSHELL_REPO     - GitHub repo (default: coffecup25/clawdshell)
 
 VERSION="${CLAWDSHELL_VERSION:-latest}"
 REPO="${CLAWDSHELL_REPO:-coffecup25/clawdshell}"
@@ -30,18 +26,15 @@ detect_platform() {
 
 main() {
     PLATFORM=$(detect_platform)
-
     INSTALL_DIR="$HOME/.local/bin"
     mkdir -p "$INSTALL_DIR"
 
     BINARY_NAME="clawdshell-${PLATFORM}"
-
     if [ "$VERSION" = "latest" ]; then
         DOWNLOAD_URL="https://github.com/${REPO}/releases/latest/download/${BINARY_NAME}"
     else
         DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${VERSION}/${BINARY_NAME}"
     fi
-
     DEST="${INSTALL_DIR}/clawdshell"
 
     echo "Downloading clawdshell for ${PLATFORM}..."
@@ -53,32 +46,30 @@ main() {
             exit 1
         }
     elif command -v wget >/dev/null 2>&1; then
-        wget -q "$DOWNLOAD_URL" -O "$DEST" || {
-            echo "Download failed: $DOWNLOAD_URL"
-            exit 1
-        }
+        wget -q "$DOWNLOAD_URL" -O "$DEST" || { echo "Download failed."; exit 1; }
     else
-        echo "Error: curl or wget required"
-        exit 1
+        echo "Error: curl or wget required"; exit 1
     fi
 
     chmod +x "$DEST"
 
-    # macOS: clear ALL xattrs (quarantine + provenance) and ad-hoc sign
+    # macOS: clear xattrs and ad-hoc sign to bypass Gatekeeper
     if [ "$(uname -s)" = "Darwin" ]; then
         xattr -c "$DEST" 2>/dev/null || true
         codesign --remove-signature "$DEST" 2>/dev/null || true
         codesign --force --sign - "$DEST" 2>/dev/null || true
     fi
 
-    # Ensure ~/.local/bin is in PATH for this session
+    # Ensure ~/.local/bin is in PATH
     case ":$PATH:" in
         *":$HOME/.local/bin:"*) ;;
         *) export PATH="$HOME/.local/bin:$PATH" ;;
     esac
 
-    # Launch --install. The binary itself handles /dev/tty reopening
-    # when it detects stdin is not a TTY (curl | sh case).
+    # Reclaim terminal stdin from the pipe (bash has already read the full script)
+    exec </dev/tty
+
+    # Run the interactive installer
     "$DEST" --install
 }
 

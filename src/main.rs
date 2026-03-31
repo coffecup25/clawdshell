@@ -4,6 +4,29 @@ use std::process;
 use std::env;
 
 fn main() {
+    // FIRST THING: if stdin/stdout aren't a TTY, reopen from /dev/tty.
+    // This is critical for curl | bash installs where fds are pipes.
+    // Must happen before ANY crossterm/ratatui initialization.
+    #[cfg(unix)]
+    {
+        if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
+            unsafe {
+                let tty_fd = libc::open(
+                    b"/dev/tty\0".as_ptr() as *const libc::c_char,
+                    libc::O_RDWR,
+                );
+                if tty_fd >= 0 {
+                    libc::dup2(tty_fd, 0);
+                    libc::dup2(tty_fd, 1);
+                    libc::dup2(tty_fd, 2);
+                    if tty_fd > 2 {
+                        libc::close(tty_fd);
+                    }
+                }
+            }
+        }
+    }
+
     let args: Vec<String> = env::args().collect();
     let debug = env::var("CLAWDSHELL_DEBUG").is_ok();
 

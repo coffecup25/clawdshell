@@ -233,67 +233,13 @@ enum HatchResult {
     Quit,
 }
 
-fn debug_log(msg: &str) {
-    use std::io::Write;
-    if let Ok(mut f) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open("/tmp/clawdshell-debug.log")
-    {
-        let _ = writeln!(f, "{}", msg);
-    }
-}
-
 /// Run Screen 1 (egg hatching, title animation, companion selection) using ratatui.
 fn run_hatch_screen(companion: &Companion) -> HatchResult {
-    use std::io::IsTerminal;
-
-    debug_log("=== run_hatch_screen start ===");
-    debug_log(&format!("stdin is_terminal: {}", std::io::stdin().is_terminal()));
-    debug_log(&format!("stdout is_terminal: {}", std::io::stdout().is_terminal()));
-
-    // If stdin isn't a TTY (curl | sh), reopen from /dev/tty so crossterm works.
-    // If stdin or stdout isn't a TTY (curl | sh), reopen all fds from /dev/tty
-    #[cfg(unix)]
-    if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
-        debug_log("not fully on TTY, reopening /dev/tty");
-        unsafe {
-            let tty_fd = libc::open(
-                b"/dev/tty\0".as_ptr() as *const libc::c_char,
-                libc::O_RDWR,
-            );
-            debug_log(&format!("opened /dev/tty fd={}", tty_fd));
-            if tty_fd >= 0 {
-                libc::dup2(tty_fd, 0);
-                libc::dup2(tty_fd, 1);
-                libc::dup2(tty_fd, 2);
-                if tty_fd > 2 {
-                    libc::close(tty_fd);
-                }
-                debug_log(&format!("after dup2: stdin is_terminal={}", libc::isatty(0) == 1));
-                debug_log(&format!("after dup2: stdout is_terminal={}", libc::isatty(1) == 1));
-            } else {
-                debug_log(&format!("failed to open /dev/tty: errno={}", *libc::__error()));
-            }
-        }
-    } else {
-        debug_log("stdin and stdout are already TTY");
-    }
-
-    debug_log("calling ratatui::init()");
     let mut terminal = ratatui::init();
-    debug_log("ratatui::init() succeeded");
-
-    debug_log("calling crossterm::terminal::enable_raw_mode()");
-    let raw_result = crossterm::terminal::enable_raw_mode();
-    debug_log(&format!("raw mode result: {:?}", raw_result));
 
     let result = hatch_render_loop(&mut terminal, companion);
-    debug_log(&format!("hatch loop returned: {:?}", result as i32));
-
     ratatui::restore();
     let _ = crossterm::execute!(std::io::stdout(), crossterm::cursor::Show);
-    debug_log("=== run_hatch_screen end ===");
     result
 }
 
@@ -401,13 +347,8 @@ fn hatch_render_loop(
                 }
             }
             HatchPhase::Hatched => {
-                let poll_result = event::poll(Duration::from_millis(50));
-                debug_log(&format!("poll result: {:?}", poll_result));
-                if poll_result.unwrap_or(false) {
-                    let ev = event::read();
-                    debug_log(&format!("event: {:?}", ev));
-                    if let Ok(Event::Key(key)) = ev {
-                        debug_log(&format!("key: {:?} kind: {:?}", key.code, key.kind));
+                if event::poll(Duration::from_millis(50)).unwrap_or(false) {
+                    if let Ok(Event::Key(key)) = event::read() {
                         if key.kind == KeyEventKind::Press {
                             match key.code {
                                 KeyCode::Up | KeyCode::Char('k') => {
