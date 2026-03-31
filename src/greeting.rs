@@ -34,7 +34,7 @@ pub fn render_greeting(
         out.push_str(TAGLINE);
         out.push_str(&format!("  — {} —\n\n", TAGLINE_NARROW));
         let sprite_lines = render::render_sprite(companion, 0);
-        let info_lines = vec![
+        let info_lines = [
             format!("clawdshell v{} — launching {}", env!("CARGO_PKG_VERSION"), tool_name),
             format!("Ctrl+D to drop to {}", fallback_shell),
         ];

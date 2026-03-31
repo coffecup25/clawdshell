@@ -26,5 +26,5 @@ fn test_resolve_tool_not_found() {
 fn test_detect_available_tools() {
     let tools = clawdshell::detect::detect_available_tools();
     // Function should not panic, tools list may be empty
-    assert!(tools.len() >= 0);
+    let _ = tools.len(); // Function should not panic, tools list may be empty
 }

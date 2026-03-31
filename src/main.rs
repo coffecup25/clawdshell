@@ -48,7 +48,7 @@ fn main() {
                     process::exit(1);
                 }
                 config.defaults.tool = args[2].clone();
-                if let Err(e) = config.save_to(&clawdshell::config::Config::default_path()) {
+                if let Err(e) = config.save_to(&clawdshell::config::Config::config_path()) {
                     eprintln!("clawdshell: {}", e);
                     process::exit(1);
                 }
@@ -167,7 +167,7 @@ fn main() {
 
 fn get_fallback_shell(config: &clawdshell::config::Config) -> String {
     config.defaults.fallback_shell.clone()
-        .unwrap_or_else(|| clawdshell::detect::detect_fallback_shell())
+        .unwrap_or_else(clawdshell::detect::detect_fallback_shell)
 }
 
 fn load_or_create_companion(config: &mut clawdshell::config::Config) -> clawdshell::companion::Companion {
@@ -178,7 +178,7 @@ fn load_or_create_companion(config: &mut clawdshell::config::Config) -> clawdshe
             getrandom::getrandom(&mut buf).expect("Failed to generate random seed");
             let seed = format!("{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}", buf[0], buf[1], buf[2], buf[3], buf[4], buf[5]);
             config.companion.seed = Some(seed.clone());
-            let _ = config.save_to(&clawdshell::config::Config::default_path());
+            let _ = config.save_to(&clawdshell::config::Config::config_path());
             seed
         }
     };

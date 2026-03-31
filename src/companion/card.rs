@@ -11,7 +11,7 @@ fn stars_for(rarity: &str) -> &'static str {
 }
 
 fn stat_bar(value: u8) -> String {
-    let filled = ((value as usize) + 1) / 2; // 1->1, 2->1, ..., 10->5
+    let filled = (value as usize).div_ceil(2); // 1->1, 2->1, ..., 10->5
     let empty = 5 - filled;
     format!("{}{} {:<2}", "█".repeat(filled), "░".repeat(empty), value)
 }

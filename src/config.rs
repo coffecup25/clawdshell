@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Config {
     #[serde(default)]
     pub defaults: Defaults,
@@ -36,16 +36,6 @@ pub struct ToolConfig {
 
 fn default_tool() -> String { "claude".to_string() }
 fn default_true() -> bool { true }
-
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            defaults: Defaults::default(),
-            companion: CompanionConfig::default(),
-            tools: HashMap::new(),
-        }
-    }
-}
 
 impl Default for Defaults {
     fn default() -> Self {
@@ -83,6 +73,14 @@ impl Config {
             Self::default_path()
         };
         Self::load_from(&path)
+    }
+
+    pub fn config_path() -> std::path::PathBuf {
+        if let Ok(p) = std::env::var("CLAWDSHELL_CONFIG") {
+            std::path::PathBuf::from(p)
+        } else {
+            Self::default_path()
+        }
     }
 
     pub fn default_path() -> std::path::PathBuf {
