@@ -42,8 +42,8 @@ pub fn install(config: &mut Config) {
         println!("  {}An egg appeared...{}\n", DIM, RESET);
         let _ = companion::animate::play_hatch(&c);
 
-        // Animate the title box in letter by letter
-        let _ = greeting::animate_title();
+        // Animate the title box in letter by letter, to the right of companion
+        let _ = greeting::animate_title(&c);
 
         println!();
         println!(

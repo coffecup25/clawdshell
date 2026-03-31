@@ -8,82 +8,112 @@ const BOLD: &str = "\x1b[1m";
 const DIM: &str = "\x1b[2m";
 const RESET: &str = "\x1b[0m";
 
-// Larger bubble-charm style title box
-const TITLE_TEXT: &str = "  C   L   A   W   D   S   H   E   L   L  ";
-const BOX_WIDTH: usize = 52;
+const TITLE_TEXT: &str = "CLAWDSHELL";
+const BOX_INNER_WIDTH: usize = 30;
 
-fn make_box_top() -> String {
-    format!("╔{}╗", "═".repeat(BOX_WIDTH))
+fn box_top() -> String {
+    format!("╔{}╗", "═".repeat(BOX_INNER_WIDTH))
 }
 
-fn make_box_mid(content: &str) -> String {
-    // Pad content to box width
-    let pad = if content.len() < BOX_WIDTH {
-        BOX_WIDTH - content.len()
+fn box_mid(content: &str, content_display_len: usize) -> String {
+    let pad = if content_display_len < BOX_INNER_WIDTH {
+        BOX_INNER_WIDTH - content_display_len
     } else {
         0
     };
     format!("║{}{}║", content, " ".repeat(pad))
 }
 
-fn make_box_bottom() -> String {
-    format!("╚{}╝", "═".repeat(BOX_WIDTH))
+fn box_bottom() -> String {
+    format!("╚{}╝", "═".repeat(BOX_INNER_WIDTH))
 }
 
-/// Animate the title box appearing letter-by-letter from left to right.
-/// Call this after the companion has hatched.
-pub fn animate_title() -> io::Result<()> {
+/// Animate the title box typing in letter-by-letter, to the right of the companion.
+pub fn animate_title(companion: &Companion) -> io::Result<()> {
     let mut stdout = io::stdout();
-    let letters: Vec<char> = TITLE_TEXT.chars().collect();
+    let sprite_lines = render::render_sprite(companion, 0);
+    let sprite_width = 14; // sprite is ~12 chars + padding
 
-    // Draw empty box first
-    let top = make_box_top();
-    let bottom = make_box_bottom();
-    let empty_mid = make_box_mid("");
+    // The box is 3 lines. We'll align it vertically centered with the sprite.
+    // sprite is 4-5 lines, box is 3 lines. Put box at lines 0-2 of sprite.
+    let box_start_line = 0;
 
-    writeln!(stdout)?;
-    writeln!(stdout, "  {}{}{}", BOLD, top, RESET)?;
-    writeln!(stdout, "  {}", empty_mid)?;
-    writeln!(stdout, "  {}{}{}", BOLD, bottom, RESET)?;
+    let top = box_top();
+    let bottom = box_bottom();
+
+    // Draw sprite + empty box
+    let total_lines = sprite_lines.len().max(box_start_line + 3);
+    println!(); // blank line above
+    for i in 0..total_lines {
+        let sprite = if i < sprite_lines.len() {
+            &sprite_lines[i]
+        } else {
+            "            "
+        };
+        let right = if i == box_start_line {
+            format!("  {}{}{}", BOLD, top, RESET)
+        } else if i == box_start_line + 1 {
+            format!("  {}", box_mid("", 0))
+        } else if i == box_start_line + 2 {
+            format!("  {}{}{}", BOLD, bottom, RESET)
+        } else {
+            String::new()
+        };
+        writeln!(stdout, " {}{}", sprite, right)?;
+    }
     stdout.flush()?;
 
     std::thread::sleep(std::time::Duration::from_millis(200));
 
-    // Type letters in one by one
+    // Type letters into the middle line, one by one
+    let letters: Vec<char> = TITLE_TEXT.chars().collect();
+    let mid_row_offset = total_lines - (box_start_line + 1); // lines from bottom to middle row
+
+    // Position: the middle row of the box
+    // We need to go up from current position to that row
+    let lines_from_bottom = total_lines - (box_start_line + 1);
+
     let mut revealed = String::new();
     for (i, ch) in letters.iter().enumerate() {
         revealed.push(*ch);
-        let mid = make_box_mid(&format!("{}{}{}", BOLD, revealed, RESET));
 
-        // Move up to the middle line and redraw it
-        execute!(stdout, cursor::MoveUp(2))?;
+        // Build the padded content: center the text in the box
+        let text_with_padding = format!(
+            "{}{}   {}{}",
+            " ".repeat(3),
+            BOLD,
+            revealed,
+            RESET
+        );
+        let display_len = 3 + 3 + revealed.len(); // padding + "   " + text
+        let mid = box_mid(&text_with_padding, display_len);
+
+        // Move up to the middle row
+        execute!(stdout, cursor::MoveUp(lines_from_bottom as u16))?;
         execute!(stdout, cursor::MoveToColumn(0))?;
-        write!(stdout, "  {}", mid)?;
+
+        // Redraw: sprite + box middle
+        let sprite = if (box_start_line + 1) < sprite_lines.len() {
+            &sprite_lines[box_start_line + 1]
+        } else {
+            "            "
+        };
+        write!(stdout, " {}  {}", sprite, mid)?;
         execute!(stdout, terminal::Clear(terminal::ClearType::UntilNewLine))?;
-        writeln!(stdout)?;
-        // Move back down past the bottom line
-        execute!(stdout, cursor::MoveDown(1))?;
+
+        // Move back down
+        execute!(stdout, cursor::MoveDown(lines_from_bottom as u16))?;
+        execute!(stdout, cursor::MoveToColumn(0))?;
         stdout.flush()?;
 
-        // Speed: start slow, get faster
-        let delay = if i < 5 { 80 } else if i < 15 { 50 } else { 35 };
+        let delay = if i < 3 { 90 } else if i < 7 { 60 } else { 40 };
         std::thread::sleep(std::time::Duration::from_millis(delay));
     }
-
-    // Final flash: redraw complete box bold
-    std::thread::sleep(std::time::Duration::from_millis(100));
-    execute!(stdout, cursor::MoveUp(3))?;
-    execute!(stdout, cursor::MoveToColumn(0))?;
-    writeln!(stdout, "  {}{}{}", BOLD, top, RESET)?;
-    let final_mid = make_box_mid(&format!("{}{}{}", BOLD, TITLE_TEXT, RESET));
-    writeln!(stdout, "  {}", final_mid)?;
-    writeln!(stdout, "  {}{}{}", BOLD, bottom, RESET)?;
-    stdout.flush()?;
 
     Ok(())
 }
 
-/// Render the static startup greeting (for normal shell launch).
+/// Render the static startup greeting (for normal shell launch, no animation).
 pub fn render_greeting(
     tool_name: &str,
     fallback_shell: &str,
@@ -93,9 +123,10 @@ pub fn render_greeting(
     let mut out = String::new();
     let version = env!("CARGO_PKG_VERSION");
 
-    let top = make_box_top();
-    let mid = make_box_mid(TITLE_TEXT);
-    let bottom = make_box_bottom();
+    let top = box_top();
+    let text_padded = format!("   {}   ", TITLE_TEXT);
+    let mid = box_mid(&text_padded, text_padded.len());
+    let bottom = box_bottom();
     let title_box = [top.as_str(), mid.as_str(), bottom.as_str()];
 
     if terminal_width >= 70 {
