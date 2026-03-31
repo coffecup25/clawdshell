@@ -2,7 +2,7 @@
 set -e
 
 # ClawdShell installer
-# Usage: curl -fsSL https://clawdshell.dev | sh
+# Usage: curl -fsSL https://clawdshell.sh | sh
 
 VERSION="${CLAWDSHELL_VERSION:-latest}"
 REPO="${CLAWDSHELL_REPO:-coffecup25/clawdshell}"
