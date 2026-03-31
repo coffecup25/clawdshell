@@ -9,7 +9,7 @@ set -e
 #   CLAWDSHELL_REPO     - GitHub repo (default: RLabs-Inc/clawdshell)
 
 VERSION="${CLAWDSHELL_VERSION:-latest}"
-REPO="${CLAWDSHELL_REPO:-RLabs-Inc/clawdshell}"
+REPO="${CLAWDSHELL_REPO:-coffecup25/clawdshell}"
 
 detect_platform() {
     OS="$(uname -s)"
