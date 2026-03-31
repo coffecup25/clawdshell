@@ -13,6 +13,7 @@ const GREEN: &str = "\x1b[32m";
 const CYAN: &str = "\x1b[36m";
 const YELLOW: &str = "\x1b[33m";
 const RESET: &str = "\x1b[0m";
+const NICE_ORANGE: &str = "\x1b[38;2;217;119;87m";
 
 fn generate_seed() -> String {
     let mut buf = [0u8; 8];
@@ -73,7 +74,7 @@ pub fn install(config: &mut Config) {
         println!();
         println!(
             "  {}✨ {}{}{} hatched! ✨{}",
-            BOLD, GREEN, c.name, RESET, RESET
+            BOLD, NICE_ORANGE, c.name, RESET, RESET
         );
 
         println!();
