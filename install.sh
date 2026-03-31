@@ -66,10 +66,8 @@ main() {
         *) export PATH="$HOME/.local/bin:$PATH" ;;
     esac
 
-    # Reclaim terminal stdin from the pipe (bash has already read the full script)
-    exec </dev/tty
-
-    # Run the interactive installer
+    # Run the installer. The binary re-execs itself with /dev/tty
+    # if it detects stdin is a pipe (curl | bash case).
     "$DEST" --install
 }
 

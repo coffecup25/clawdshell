@@ -4,26 +4,18 @@ use std::process;
 use std::env;
 
 fn main() {
-    // FIRST THING: if stdin/stdout aren't a TTY, reopen from /dev/tty.
-    // This is critical for curl | bash installs where fds are pipes.
-    // Must happen before ANY crossterm/ratatui initialization.
+    // If stdin isn't a TTY (curl | bash), re-exec ourselves with /dev/tty as stdin.
+    // This spawns a clean child process with proper terminal access.
     #[cfg(unix)]
-    {
-        if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
-            unsafe {
-                let tty_fd = libc::open(
-                    b"/dev/tty\0".as_ptr() as *const libc::c_char,
-                    libc::O_RDWR,
-                );
-                if tty_fd >= 0 {
-                    libc::dup2(tty_fd, 0);
-                    libc::dup2(tty_fd, 1);
-                    libc::dup2(tty_fd, 2);
-                    if tty_fd > 2 {
-                        libc::close(tty_fd);
-                    }
-                }
-            }
+    if !std::io::stdin().is_terminal() {
+        if let Ok(tty) = std::fs::File::open("/dev/tty") {
+            let exe = std::env::current_exe().unwrap_or_default();
+            let args: Vec<String> = env::args().skip(1).collect();
+            let status = std::process::Command::new(exe)
+                .args(&args)
+                .stdin(tty)
+                .status();
+            process::exit(status.map(|s| s.code().unwrap_or(1)).unwrap_or(1));
         }
     }
 
