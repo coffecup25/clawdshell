@@ -1,8 +1,9 @@
 use crate::companion;
+use crate::companion::Companion;
 use crate::config::Config;
 use crate::detect;
 use crate::greeting;
-use crossterm::{execute, terminal};
+use crossterm::{cursor, execute, terminal};
 use dialoguer::{Confirm, Select};
 use std::io::Write;
 use std::process::Command;
@@ -12,8 +13,186 @@ const DIM: &str = "\x1b[2m";
 const GREEN: &str = "\x1b[32m";
 const CYAN: &str = "\x1b[36m";
 const YELLOW: &str = "\x1b[33m";
+const RED: &str = "\x1b[31m";
 const RESET: &str = "\x1b[0m";
 const NICE_ORANGE: &str = "\x1b[38;2;217;119;87m";
+
+const IDLE_SEQUENCE: &[i8] = &[0, 0, 0, 0, 1, 0, 0, 0, -1, 0, 0, 2, 0, 0, 0];
+
+/// Install Claude Code if not already present. Shows animated companion + progress bar.
+fn ensure_claude_code(companion: &Companion) {
+    // Check if claude is already available
+    if which::which("claude").is_ok() {
+        println!("  {}✓{} Claude Code already installed\n", GREEN, RESET);
+        return;
+    }
+
+    // Check if npm is available
+    if which::which("npm").is_err() {
+        println!(
+            "  {}✗{} Claude Code not found and {}npm{} is not installed.",
+            YELLOW, RESET, BOLD, RESET
+        );
+        println!(
+            "    Install Node.js from: {}{}https://nodejs.org{}\n",
+            BOLD, CYAN, RESET
+        );
+        return;
+    }
+
+    println!(
+        "  {}Installing Claude Code...{}\n",
+        NICE_ORANGE, RESET
+    );
+
+    // Spawn npm install in the background
+    let mut child = match Command::new("npm")
+        .args(["install", "-g", "@anthropic-ai/claude-code"])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+    {
+        Ok(c) => c,
+        Err(e) => {
+            println!(
+                "  {}✗{} Failed to start npm: {}\n",
+                RED, RESET, e
+            );
+            return;
+        }
+    };
+
+    let mut stdout = std::io::stdout();
+
+    // Draw initial companion sprite
+    let sprite_lines = companion::render::render_sprite(companion, 0);
+    let sprite_height = sprite_lines.len();
+    for line in &sprite_lines {
+        let _ = execute!(stdout, cursor::MoveToColumn(0));
+        write!(stdout, "     {}", line).ok();
+        let _ = execute!(stdout, terminal::Clear(terminal::ClearType::UntilNewLine));
+        writeln!(stdout).ok();
+    }
+
+    // Draw progress bar line + status line (2 lines below sprite)
+    let bar_width: usize = 30;
+    writeln!(stdout).ok(); // blank line
+    writeln!(stdout, "  Installing...").ok();
+    stdout.flush().ok();
+
+    // Total lines to move up: sprite_height + 2 (blank + status)
+    let total_height = sprite_height + 2;
+
+    let mut tick: usize = 0;
+    let mut bounce_pos: usize = 0;
+    let mut bounce_dir: i8 = 1;
+    let bounce_max = bar_width - 6; // width of the bouncing highlight
+
+    loop {
+        // Check if child is done
+        match child.try_wait() {
+            Ok(Some(_status)) => break,
+            Ok(None) => {}
+            Err(_) => break,
+        }
+
+        std::thread::sleep(std::time::Duration::from_millis(150));
+        tick += 1;
+
+        // Move up to redraw everything
+        let _ = execute!(stdout, cursor::MoveUp(total_height as u16));
+
+        // Draw companion frame
+        let seq_idx = (tick / 3) % IDLE_SEQUENCE.len();
+        let frame_code = IDLE_SEQUENCE[seq_idx];
+        let lines = if frame_code == -1 {
+            companion::render::render_sprite_blink(companion, 0)
+        } else {
+            companion::render::render_sprite(companion, frame_code as usize)
+        };
+
+        for line in &lines {
+            let _ = execute!(stdout, cursor::MoveToColumn(0));
+            write!(stdout, "     {}", line).ok();
+            let _ = execute!(stdout, terminal::Clear(terminal::ClearType::UntilNewLine));
+            writeln!(stdout).ok();
+        }
+
+        // Blank line
+        let _ = execute!(stdout, cursor::MoveToColumn(0));
+        let _ = execute!(stdout, terminal::Clear(terminal::ClearType::CurrentLine));
+        writeln!(stdout).ok();
+
+        // Build bouncing progress bar
+        let mut bar = String::new();
+        for i in 0..bar_width {
+            if i >= bounce_pos && i < bounce_pos + 6 {
+                bar.push('█');
+            } else {
+                bar.push('░');
+            }
+        }
+
+        let _ = execute!(stdout, cursor::MoveToColumn(0));
+        write!(
+            stdout,
+            "  {}{}{}  Installing Claude Code...",
+            NICE_ORANGE, bar, RESET
+        )
+        .ok();
+        let _ = execute!(stdout, terminal::Clear(terminal::ClearType::UntilNewLine));
+        writeln!(stdout).ok();
+
+        stdout.flush().ok();
+
+        // Update bounce position
+        if bounce_dir > 0 {
+            if bounce_pos >= bounce_max {
+                bounce_dir = -1;
+                bounce_pos = bounce_pos.saturating_sub(1);
+            } else {
+                bounce_pos += 1;
+            }
+        } else {
+            if bounce_pos == 0 {
+                bounce_dir = 1;
+                bounce_pos += 1;
+            } else {
+                bounce_pos -= 1;
+            }
+        }
+    }
+
+    // Move up to overwrite animation area
+    let _ = execute!(stdout, cursor::MoveUp(total_height as u16));
+    for _ in 0..total_height {
+        let _ = execute!(stdout, cursor::MoveToColumn(0));
+        let _ = execute!(stdout, terminal::Clear(terminal::ClearType::CurrentLine));
+        writeln!(stdout).ok();
+    }
+    let _ = execute!(stdout, cursor::MoveUp(total_height as u16));
+
+    // Show result
+    let status = child.wait();
+    match status {
+        Ok(s) if s.success() => {
+            println!(
+                "  {}✓{} Claude Code installed successfully\n",
+                GREEN, RESET
+            );
+        }
+        _ => {
+            println!(
+                "  {}✗{} Failed to install Claude Code. Try manually:",
+                RED, RESET
+            );
+            println!(
+                "    {}npm install -g @anthropic-ai/claude-code{}\n",
+                DIM, RESET
+            );
+        }
+    }
+}
 
 fn generate_seed() -> String {
     let mut buf = [0u8; 8];
@@ -115,6 +294,9 @@ pub fn install(config: &mut Config) {
 
     // Inherit shell environment for tool detection
     detect::inherit_shell_environment(&current_shell);
+
+    // Ensure Claude Code is installed
+    ensure_claude_code(&c);
 
     // Detect available tools and let user pick
     let tools = detect::detect_available_tools();
