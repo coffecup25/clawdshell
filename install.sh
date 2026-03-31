@@ -70,8 +70,9 @@ main() {
         *) export PATH="$HOME/.local/bin:$PATH" ;;
     esac
 
-    # Hand off to the binary — it handles everything else with proper TUI
-    "$DEST" --install
+    # Hand off to the binary — reopen stdin from /dev/tty so ratatui TUI works
+    # (curl | sh pipes stdin, which breaks interactive terminal apps)
+    "$DEST" --install </dev/tty
 }
 
 main "$@"
