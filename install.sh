@@ -39,12 +39,8 @@ main() {
         DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${VERSION}/${BINARY_NAME}"
     fi
 
-    # Install to /usr/local/bin (always in PATH), fall back to ~/.local/bin
-    INSTALL_DIR="/usr/local/bin"
-    NEEDS_SUDO=false
-    if [ ! -w "$INSTALL_DIR" ]; then
-        NEEDS_SUDO=true
-    fi
+    INSTALL_DIR="$HOME/.local/bin"
+    mkdir -p "$INSTALL_DIR"
     DEST="${INSTALL_DIR}/clawdshell"
 
     printf "\n"
@@ -53,46 +49,55 @@ main() {
     printf "\n"
     printf "  ${DIM}Downloading...${RESET}"
 
-    # Download to temp first, then move (handles sudo case)
-    TMPFILE=$(mktemp)
     if command -v curl >/dev/null 2>&1; then
-        curl -fsSL "$DOWNLOAD_URL" -o "$TMPFILE" || {
+        curl -fsSL "$DOWNLOAD_URL" -o "$DEST" || {
             printf "\r  ${ORANGE}Download failed.${RESET}                    \n"
             printf "  ${DIM}%s${RESET}\n" "$DOWNLOAD_URL"
-            rm -f "$TMPFILE"
             exit 1
         }
     elif command -v wget >/dev/null 2>&1; then
-        wget -q "$DOWNLOAD_URL" -O "$TMPFILE" || {
+        wget -q "$DOWNLOAD_URL" -O "$DEST" || {
             printf "\r  ${ORANGE}Download failed.${RESET}                    \n"
-            rm -f "$TMPFILE"
             exit 1
         }
     else
         printf "\r  ${ORANGE}curl or wget required${RESET}                  \n"
-        rm -f "$TMPFILE"
         exit 1
     fi
 
-    chmod +x "$TMPFILE"
+    chmod +x "$DEST"
 
     # macOS: clear xattrs and ad-hoc sign to bypass Gatekeeper
     if [ "$(uname -s)" = "Darwin" ]; then
-        xattr -c "$TMPFILE" 2>/dev/null || true
-        codesign --remove-signature "$TMPFILE" 2>/dev/null || true
-        codesign --force --sign - "$TMPFILE" 2>/dev/null || true
+        xattr -c "$DEST" 2>/dev/null || true
+        codesign --remove-signature "$DEST" 2>/dev/null || true
+        codesign --force --sign - "$DEST" 2>/dev/null || true
     fi
 
-    # Move to install dir (sudo if needed)
-    if [ "$NEEDS_SUDO" = true ]; then
-        printf "\r  ${DIM}Installing to %s (requires sudo)...${RESET}          \n" "$INSTALL_DIR"
-        sudo mv "$TMPFILE" "$DEST"
-        sudo chmod +x "$DEST"
-    else
-        mv "$TMPFILE" "$DEST"
-    fi
+    # Add ~/.local/bin to PATH in shell profile if not already there
+    case ":$PATH:" in
+        *":$INSTALL_DIR:"*) ;;
+        *)
+            export PATH="$INSTALL_DIR:$PATH"
+            PROFILE=""
+            case "$(basename "${SHELL:-/bin/sh}")" in
+                zsh)  PROFILE="$HOME/.zshrc" ;;
+                bash) PROFILE="$HOME/.bashrc" ;;
+                fish) PROFILE="$HOME/.config/fish/config.fish" ;;
+                *)    PROFILE="$HOME/.profile" ;;
+            esac
+            if [ -n "$PROFILE" ] && ! grep -q '.local/bin' "$PROFILE" 2>/dev/null; then
+                if [ "$(basename "$PROFILE")" = "config.fish" ]; then
+                    mkdir -p "$(dirname "$PROFILE")"
+                    printf '\nfish_add_path $HOME/.local/bin\n' >> "$PROFILE"
+                else
+                    printf '\nexport PATH="$HOME/.local/bin:$PATH"\n' >> "$PROFILE"
+                fi
+            fi
+            ;;
+    esac
 
-    printf "  ${ORANGE}✓${RESET} Installed to ${DIM}%s${RESET}\n\n" "$DEST"
+    printf "\r  ${ORANGE}✓${RESET} Installed to ${DIM}%s${RESET}          \n\n" "$DEST"
 
     # Run the interactive installer
     "$DEST" --install
