@@ -234,19 +234,103 @@ enum HatchResult {
 }
 
 /// Run Screen 1 (egg hatching, title animation, companion selection) using ratatui.
+/// Opens /dev/tty directly so it works regardless of how the binary was invoked
+/// (curl | sh, piped stdin, etc.).
 fn run_hatch_screen(companion: &Companion) -> HatchResult {
-    let mut terminal = ratatui::init();
+    use ratatui::backend::CrosstermBackend;
+
+    // Open /dev/tty directly — this fully owns the terminal
+    let tty = match std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open("/dev/tty")
+    {
+        Ok(f) => f,
+        Err(_) => {
+            // No TTY available (e.g., CI, headless) — skip TUI
+            eprintln!("clawdshell: no terminal available, skipping setup wizard");
+            return HatchResult::Keep;
+        }
+    };
+
+    // Use crossterm's raw mode — it opens /dev/tty internally
+    let _ = crossterm::terminal::enable_raw_mode();
+
+    let backend = CrosstermBackend::new(tty);
+    let mut terminal = match Terminal::new(backend) {
+        Ok(t) => t,
+        Err(_) => {
+            let _ = crossterm::terminal::disable_raw_mode();
+            return HatchResult::Keep;
+        }
+    };
+
+    let _ = crossterm::execute!(terminal.backend_mut(), terminal::EnterAlternateScreen);
+    let _ = terminal.clear();
 
     let result = hatch_render_loop(&mut terminal, companion);
-    ratatui::restore();
-    let _ = crossterm::execute!(std::io::stdout(), crossterm::cursor::Show);
+
+    // Restore terminal
+    let _ = crossterm::execute!(
+        terminal.backend_mut(),
+        terminal::LeaveAlternateScreen,
+        crossterm::cursor::Show
+    );
+    let _ = crossterm::terminal::disable_raw_mode();
+
     result
 }
 
+/// Read a key from /dev/tty directly, bypassing crossterm's event system.
+/// Returns None if no key available within timeout.
+#[cfg(unix)]
+fn read_key_from_tty(tty_fd: i32, timeout_ms: u64) -> Option<KeyCode> {
+    use std::io::Read;
+
+    // Use poll() to check if data available
+    let mut pfd = libc::pollfd {
+        fd: tty_fd,
+        events: libc::POLLIN,
+        revents: 0,
+    };
+    let ready = unsafe { libc::poll(&mut pfd, 1, timeout_ms as i32) };
+    if ready <= 0 {
+        return None;
+    }
+
+    let mut buf = [0u8; 8];
+    let n = unsafe { libc::read(tty_fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len()) };
+    if n <= 0 {
+        return None;
+    }
+    let bytes = &buf[..n as usize];
+
+    match bytes {
+        [3] => Some(KeyCode::Char('c')),          // Ctrl+C
+        [13] | [10] => Some(KeyCode::Enter),       // Enter
+        [27] => Some(KeyCode::Esc),                // Esc
+        [27, 91, 65] => Some(KeyCode::Up),         // Arrow up
+        [27, 91, 66] => Some(KeyCode::Down),       // Arrow down
+        [27, 91, 67] => Some(KeyCode::Right),      // Arrow right
+        [27, 91, 68] => Some(KeyCode::Left),       // Arrow left
+        [b'k'] | [b'K'] => Some(KeyCode::Char('k')),
+        [b'j'] | [b'J'] => Some(KeyCode::Char('j')),
+        [b'q'] | [b'Q'] => Some(KeyCode::Char('q')),
+        [b'r'] | [b'R'] => Some(KeyCode::Char('r')),
+        _ => None,
+    }
+}
+
 fn hatch_render_loop(
-    terminal: &mut Terminal<ratatui::backend::CrosstermBackend<std::io::Stdout>>,
+    terminal: &mut Terminal<ratatui::backend::CrosstermBackend<std::fs::File>>,
     companion: &Companion,
 ) -> HatchResult {
+    // Open /dev/tty for reading keys directly
+    #[cfg(unix)]
+    let key_fd = unsafe {
+        libc::open(b"/dev/tty\0".as_ptr() as *const libc::c_char, libc::O_RDONLY | libc::O_NONBLOCK)
+    };
+
     let egg_sequence: &[usize] = &[0, 1, 2, 1, 2, 3, 4, 5, 6, 7];
     let egg_timing: &[u64] = &[800, 300, 300, 300, 300, 600, 600, 400, 400, 300];
 
@@ -292,22 +376,16 @@ fn hatch_render_loop(
                         phase_start = Instant::now();
                     }
                 }
-                // Check for Ctrl+C / Esc / Enter to skip animation
-                if event::poll(Duration::from_millis(30)).unwrap_or(false) {
-                    if let Ok(Event::Key(key)) = event::read() {
-                        if key.kind == KeyEventKind::Press {
-                            match key.code {
-                                KeyCode::Char('c') if key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) => {
-                                    return HatchResult::Quit;
-                                }
-                                KeyCode::Esc | KeyCode::Enter => {
-                                    phase = HatchPhase::Hatched;
-                                    title_chars = 10;
-                                    selection = 0;
-                                }
-                                _ => {}
-                            }
+                #[cfg(unix)]
+                if let Some(key) = read_key_from_tty(key_fd, 30) {
+                    match key {
+                        KeyCode::Char('c') => return HatchResult::Quit,
+                        KeyCode::Esc | KeyCode::Enter => {
+                            phase = HatchPhase::Hatched;
+                            title_chars = 10;
+                            selection = 0;
                         }
+                        _ => {}
                     }
                 }
             }
@@ -324,21 +402,16 @@ fn hatch_render_loop(
                         title_chars += 1;
                         phase_start = Instant::now();
                     }
-                    if event::poll(Duration::from_millis(10)).unwrap_or(false) {
-                        if let Ok(Event::Key(key)) = event::read() {
-                            if key.kind == KeyEventKind::Press {
-                                match key.code {
-                                    KeyCode::Char('c') if key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) => {
-                                        return HatchResult::Quit;
-                                    }
-                                    KeyCode::Esc | KeyCode::Enter => {
-                                        title_chars = 10;
-                                        phase = HatchPhase::Hatched;
-                                        selection = 0;
-                                    }
-                                    _ => {}
-                                }
+                    #[cfg(unix)]
+                    if let Some(key) = read_key_from_tty(key_fd, 10) {
+                        match key {
+                            KeyCode::Char('c') => return HatchResult::Quit,
+                            KeyCode::Esc | KeyCode::Enter => {
+                                title_chars = 10;
+                                phase = HatchPhase::Hatched;
+                                selection = 0;
                             }
+                            _ => {}
                         }
                     }
                 } else {
@@ -347,28 +420,20 @@ fn hatch_render_loop(
                 }
             }
             HatchPhase::Hatched => {
-                if event::poll(Duration::from_millis(50)).unwrap_or(false) {
-                    if let Ok(Event::Key(key)) = event::read() {
-                        if key.kind == KeyEventKind::Press {
-                            match key.code {
-                                KeyCode::Up | KeyCode::Char('k') => {
-                                    selection = 0;
-                                }
-                                KeyCode::Down | KeyCode::Char('j') => {
-                                    selection = 1;
-                                }
-                                KeyCode::Enter => {
-                                    return if selection == 1 { HatchResult::Reroll } else { HatchResult::Keep };
-                                }
-                                KeyCode::Char('c') if key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) => {
-                                    return HatchResult::Quit;
-                                }
-                                KeyCode::Esc | KeyCode::Char('q') => {
-                                    return HatchResult::Quit;
-                                }
-                                _ => {}
-                            }
+                #[cfg(unix)]
+                if let Some(key) = read_key_from_tty(key_fd, 50) {
+                    match key {
+                        KeyCode::Up | KeyCode::Char('k') => selection = 0,
+                        KeyCode::Down | KeyCode::Char('j') => selection = 1,
+                        KeyCode::Enter => {
+                            unsafe { libc::close(key_fd); }
+                            return if selection == 1 { HatchResult::Reroll } else { HatchResult::Keep };
                         }
+                        KeyCode::Char('c') | KeyCode::Esc | KeyCode::Char('q') => {
+                            unsafe { libc::close(key_fd); }
+                            return HatchResult::Quit;
+                        }
+                        _ => {}
                     }
                 }
             }

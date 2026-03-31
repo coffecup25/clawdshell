@@ -7,7 +7,7 @@ A login shell that launches AI coding tools. Open a terminal, land in Claude Cod
 ## Install
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/coffecup25/clawdshell/main/install.sh)
+curl -fsSL https://raw.githubusercontent.com/coffecup25/clawdshell/main/install.sh | sh
 ```
 
 Or download a binary from [Releases](https://github.com/coffecup25/clawdshell/releases) and run:

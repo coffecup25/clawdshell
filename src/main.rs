@@ -4,34 +4,6 @@ use std::process;
 use std::env;
 
 fn main() {
-    // If stdin or stdout isn't a TTY (curl | bash), dup2 /dev/tty onto all fds
-    // and exec ourselves. This replaces the process entirely so the fresh Rust
-    // runtime sees proper tty fds from the start — no cached pipe state.
-    #[cfg(unix)]
-    if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
-        unsafe {
-            let tty_fd = libc::open(
-                b"/dev/tty\0".as_ptr() as *const libc::c_char,
-                libc::O_RDWR,
-            );
-            if tty_fd >= 0 {
-                libc::dup2(tty_fd, 0);
-                libc::dup2(tty_fd, 1);
-                libc::dup2(tty_fd, 2);
-                if tty_fd > 2 {
-                    libc::close(tty_fd);
-                }
-                // Re-exec ourselves — replaces this process image completely
-                use std::os::unix::process::CommandExt;
-                let exe = std::env::current_exe().unwrap_or_default();
-                let args: Vec<String> = env::args().skip(1).collect();
-                let err = std::process::Command::new(exe).args(&args).exec();
-                eprintln!("clawdshell: re-exec failed: {}", err);
-                process::exit(1);
-            }
-        }
-    }
-
     let args: Vec<String> = env::args().collect();
     let debug = env::var("CLAWDSHELL_DEBUG").is_ok();
 
