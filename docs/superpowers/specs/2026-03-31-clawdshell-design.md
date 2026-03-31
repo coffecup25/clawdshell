@@ -33,21 +33,39 @@ Terminal launches clawdshell
 ClawdShell must handle flags that programs like `scp`, `rsync`, and `ssh` pass to login shells:
 
 - `clawdshell -c "command"` -> Forward to fallback shell (critical for ssh remote commands, scp, rsync)
+- `clawdshell -c "command" arg1 arg2` -> Forward to fallback shell with positional args (POSIX-compliant)
 - `clawdshell -l` -> No-op, normal launch (login shell flag)
 
-If `-c` is not handled, remote file operations and ssh commands will break when clawdshell is the login shell.
+Any unrecognized flags are passed through to the fallback shell. If `-c` is not handled, remote file operations and ssh commands will break when clawdshell is the login shell.
+
+### Signal Handling
+
+On Unix, clawdshell forwards signals to the active child process:
+
+- **SIGINT (Ctrl+C):** Forward to child. Do not exit clawdshell itself.
+- **SIGHUP (terminal close):** Forward to child, then exit.
+- **SIGWINCH (terminal resize):** Forward to child (tools need this for UI reflow).
+- **SIGTSTP (Ctrl+Z):** Forward to child. The tool decides whether to suspend.
+
+On Windows, signals are handled by the OS/console subsystem and do not need explicit forwarding.
+
+### Non-Interactive / Non-TTY Mode
+
+If stdin is not a TTY (e.g., piped input like `echo "ls" | clawdshell`), skip the tool and forward directly to the fallback shell. Interactive AI tools will fail or hang without a TTY.
 
 ### Exit Behavior
 
 - Tool exits (any exit code) -> spawn fallback shell
-- Fallback shell exits -> clawdshell exits
+- Fallback shell exits -> clawdshell exits with the fallback shell's exit code
 - Tool binary not found -> warn and skip straight to fallback shell
+
+On Unix, the fallback shell is launched via `exec` (replaces the clawdshell process) to avoid an idle parent process. On Windows, spawn-and-wait is used since `exec` semantics differ.
 
 ## Configuration
 
-**Location:** `~/.config/clawdshell/config.toml`
+**Location:** `~/.config/clawdshell/config.toml` (override with `CLAWDSHELL_CONFIG` env var)
 
-Configuration is optional. If no config file exists, defaults apply: tool=claude, auto-detect fallback shell, banner on.
+Configuration is optional. If no config file exists, defaults apply: tool=claude, auto-detect fallback shell, banner on. Set `CLAWDSHELL_DEBUG=1` for diagnostic output to stderr.
 
 ```toml
 [defaults]
@@ -69,10 +87,9 @@ args = []
 
 ### Resolution Order for Tool Binary
 
-1. `tool_command` field in the active `[tools.*]` section (absolute path, no PATH lookup)
-2. `command` field looked up in PATH
-3. Tool name (from `[defaults].tool`) looked up in PATH
-4. If not found -> warn and skip to fallback shell
+1. `command` field in the active `[tools.*]` section. If it's an absolute path, use directly; if it's a bare name, look up in PATH.
+2. Tool name (from `[defaults].tool`) looked up in PATH (used when no `command` field is set).
+3. If not found -> warn and skip to fallback shell.
 
 ### Fallback Shell Detection
 
@@ -80,6 +97,10 @@ On `--install`, clawdshell snapshots the current `$SHELL` value into `config.tom
 
 - **macOS/Linux:** Check `$SHELL`, fall back to `/bin/sh`
 - **Windows:** Check `COMSPEC`, fall back to `powershell.exe`
+
+### Environment / Profile Sourcing
+
+ClawdShell does not source shell profile files (`~/.zprofile`, `~/.bash_profile`, etc.) — it is a Rust binary, not a POSIX shell. It relies on the terminal emulator inheriting an environment where PATH is already set (which is the case for macOS Terminal.app, iTerm2, Windows Terminal, and most Linux terminal emulators). Users whose tool binaries require PATH entries from login profiles should set those in `~/.zshenv` (sourced by all zsh instances) or equivalent.
 
 ## CLI Interface
 
@@ -142,6 +163,10 @@ SUPPORTED TOOLS:
 
     Any binary can be used by adding a [tools.<name>] section.
 
+ENVIRONMENT:
+    CLAWDSHELL_CONFIG    Override config file path
+    CLAWDSHELL_DEBUG=1   Print diagnostic info to stderr
+
 EXAMPLES:
     clawdshell --install                # Set up as login shell
     clawdshell --set-tool codex         # Switch to Codex
@@ -163,11 +188,13 @@ EXAMPLES:
 **Windows:**
 1. Detect current shell (PowerShell/cmd)
 2. Save as fallback
-3. Add a Windows Terminal profile for clawdshell (modify `settings.json`)
-4. Optionally set as default profile
-5. Print summary
+3. Locate Windows Terminal `settings.json` (check Store path `%LOCALAPPDATA%\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json`, then unpackaged/preview paths)
+4. Add a Windows Terminal profile for clawdshell
+5. Optionally set as default profile (record whether this was done, so uninstall can restore only if changed)
+6. If Windows Terminal not found, print manual setup instructions for the user's terminal
+7. Print summary
 
-**Safety:** Both platforms print what they're about to do and ask for confirmation before making changes.
+**Safety:** Both platforms print what they're about to do and ask for confirmation before any sudo calls or system modifications.
 
 ### `clawdshell --uninstall`
 
@@ -186,8 +213,9 @@ curl -fsSL https://get-clawd.sh | sh
 The script:
 1. Detects OS and architecture
 2. Downloads the correct prebuilt binary from a known URL
-3. Places it in `/usr/local/bin/clawdshell` (or `~/.local/bin/`)
-4. Runs `clawdshell --install`
+3. Prompts for confirmation before proceeding with installation
+4. Places it in `/usr/local/bin/clawdshell` (requires sudo) or `~/.local/bin/` if no sudo
+5. Runs `clawdshell --install` (which will request sudo for `/etc/shells` and `chsh`)
 
 #### Companion Animation During Download
 
@@ -261,6 +289,8 @@ No async runtime. This is a synchronous, short-lived process.
 | Config directory | `~/.config/clawdshell/` | `%APPDATA%/clawdshell/` |
 | Fallback detection | `$SHELL` env var | `COMSPEC` env var |
 | `-c` forwarding | Forward to fallback shell | Forward to fallback shell |
+| Signal forwarding | Explicit (SIGINT, SIGHUP, SIGWINCH, SIGTSTP) | Handled by OS/console subsystem |
+| Fallback shell exec | `exec` replaces process | Spawn-and-wait |
 
 ## Decisions Log
 
