@@ -18,7 +18,6 @@ use std::time::{Duration, Instant};
 
 const BOLD: &str = "\x1b[1m";
 const DIM: &str = "\x1b[2m";
-const GREEN: &str = "\x1b[32m";
 const CYAN: &str = "\x1b[36m";
 const YELLOW: &str = "\x1b[33m";
 const RED: &str = "\x1b[31m";
@@ -32,7 +31,7 @@ const IDLE_SEQUENCE: &[i8] = &[0, 0, 0, 0, 1, 0, 0, 0, -1, 0, 0, 2, 0, 0, 0];
 fn ensure_claude_code(companion: &Companion) {
     // Check if claude is already available
     if which::which("claude").is_ok() {
-        println!("  {}✓{} Claude Code already installed\n", GREEN, RESET);
+        println!("  {}✓{} Claude Code already installed\n", NICE_ORANGE_ANSI, RESET);
         return;
     }
 
@@ -187,7 +186,7 @@ fn ensure_claude_code(companion: &Companion) {
         Ok(s) if s.success() => {
             println!(
                 "  {}✓{} Claude Code installed successfully\n",
-                GREEN, RESET
+                NICE_ORANGE_ANSI, RESET
             );
         }
         _ => {
@@ -280,9 +279,24 @@ fn hatch_render_loop(
                         phase_start = Instant::now();
                     }
                 }
-                // Drain any key events during egg animation (don't block)
+                // Check for Ctrl+C / Esc / Enter to skip animation
                 if event::poll(Duration::from_millis(30)).unwrap_or(false) {
-                    let _ = event::read();
+                    if let Ok(Event::Key(key)) = event::read() {
+                        if key.kind == KeyEventKind::Press {
+                            match key.code {
+                                KeyCode::Char('c') if key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) => {
+                                    std::process::exit(0);
+                                }
+                                KeyCode::Esc | KeyCode::Enter => {
+                                    // Skip to hatched state
+                                    phase = HatchPhase::Hatched;
+                                    title_chars = 10;
+                                    selection = 0;
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
                 }
             }
             HatchPhase::Reveal => {
@@ -298,9 +312,23 @@ fn hatch_render_loop(
                         title_chars += 1;
                         phase_start = Instant::now();
                     }
-                    // Drain events
+                    // Check for Ctrl+C / Esc / Enter to skip animation
                     if event::poll(Duration::from_millis(10)).unwrap_or(false) {
-                        let _ = event::read();
+                        if let Ok(Event::Key(key)) = event::read() {
+                            if key.kind == KeyEventKind::Press {
+                                match key.code {
+                                    KeyCode::Char('c') if key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) => {
+                                        std::process::exit(0);
+                                    }
+                                    KeyCode::Esc | KeyCode::Enter => {
+                                        title_chars = 10;
+                                        phase = HatchPhase::Hatched;
+                                        selection = 0;
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
                     }
                 } else {
                     // Title fully revealed — move to hatched
@@ -322,6 +350,12 @@ fn hatch_render_loop(
                                 }
                                 KeyCode::Enter => {
                                     return selection == 1; // true = reroll
+                                }
+                                KeyCode::Char('c') if key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) => {
+                                    std::process::exit(0);
+                                }
+                                KeyCode::Esc => {
+                                    std::process::exit(0);
                                 }
                                 _ => {}
                             }
@@ -565,7 +599,7 @@ pub fn install(config: &mut Config) {
             RESET,
             tools
                 .iter()
-                .map(|t| format!("{}{}{}", GREEN, t, RESET))
+                .map(|t| format!("{}{}{}", NICE_ORANGE_ANSI, t, RESET))
                 .collect::<Vec<_>>()
                 .join(", ")
         );
@@ -585,7 +619,7 @@ pub fn install(config: &mut Config) {
         config.defaults.tool = tools[choice].to_string();
         println!(
             "\n  {}Default tool:{} {}{}{}\n",
-            DIM, RESET, GREEN, config.defaults.tool, RESET
+            DIM, RESET, NICE_ORANGE_ANSI, config.defaults.tool, RESET
         );
     }
 
@@ -610,19 +644,26 @@ pub fn install(config: &mut Config) {
     println!("  {}{}Shell Registration{}\n", BOLD, NICE_ORANGE_ANSI, RESET);
 
     #[cfg(unix)]
-    unix_install(&exe_path);
+    let registered = unix_install(&exe_path);
 
     #[cfg(windows)]
-    windows_install(&exe_path);
+    let registered = windows_install(&exe_path);
 
     println!(
         "\n{}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{}",
         DIM, RESET
     );
-    println!(
-        "  {}{}Done!{} Open a new terminal to start using clawdshell.\n",
-        BOLD, GREEN, RESET
-    );
+    if registered {
+        println!(
+            "  {}{}Done!{} Open a new terminal to start using clawdshell.\n",
+            BOLD, NICE_ORANGE_ANSI, RESET
+        );
+    } else {
+        println!(
+            "  {}Setup cancelled.{} Run {}clawdshell --install{} to try again.\n",
+            DIM, RESET, BOLD, RESET
+        );
+    }
 }
 
 pub fn uninstall(config: &Config) {
@@ -644,7 +685,7 @@ pub fn uninstall(config: &Config) {
     println!("  This will:");
     println!(
         "    1. Restore your shell to: {}{}{}",
-        GREEN, fallback, RESET
+        NICE_ORANGE_ANSI, fallback, RESET
     );
     #[cfg(unix)]
     println!("    2. Remove clawdshell from /etc/shells");
@@ -670,14 +711,14 @@ pub fn uninstall(config: &Config) {
     println!(
         "\n  {}{}Done!{} Config preserved at: {}\n",
         BOLD,
-        GREEN,
+        NICE_ORANGE_ANSI,
         RESET,
         Config::default_path().display()
     );
 }
 
 #[cfg(unix)]
-fn unix_install(exe_path: &str) {
+fn unix_install(exe_path: &str) -> bool {
     println!("  This will:");
     println!(
         "    1. Add clawdshell to {}/etc/shells{} (requires sudo)",
@@ -695,8 +736,7 @@ fn unix_install(exe_path: &str) {
         .unwrap_or(false);
 
     if !proceed {
-        println!("  Aborted.");
-        return;
+        return false;
     }
 
     println!();
@@ -708,32 +748,36 @@ fn unix_install(exe_path: &str) {
             .args(["sh", "-c", &format!("echo '{}' >> /etc/shells", exe_path)])
             .status();
         match status {
-            Ok(s) if s.success() => println!("  {}✓{} Added to /etc/shells", GREEN, RESET),
+            Ok(s) if s.success() => println!("  {}✓{} Added to /etc/shells", NICE_ORANGE_ANSI, RESET),
             _ => {
                 eprintln!("  {}✗{} Failed to add to /etc/shells", YELLOW, RESET);
-                return;
+                return false;
             }
         }
     } else {
-        println!("  {}✓{} Already in /etc/shells", GREEN, RESET);
+        println!("  {}✓{} Already in /etc/shells", NICE_ORANGE_ANSI, RESET);
     }
 
     // Run chsh
     match Command::new("chsh").args(["-s", exe_path]).status() {
         Ok(s) if s.success() => {
-            println!("  {}✓{} Login shell changed to clawdshell", GREEN, RESET)
+            println!("  {}✓{} Login shell changed to clawdshell", NICE_ORANGE_ANSI, RESET);
+            true
         }
-        _ => eprintln!(
-            "  {}✗{} Failed to run chsh. Try: chsh -s {}",
-            YELLOW, RESET, exe_path
-        ),
+        _ => {
+            eprintln!(
+                "  {}✗{} Failed to run chsh. Try: chsh -s {}",
+                YELLOW, RESET, exe_path
+            );
+            false
+        }
     }
 }
 
 #[cfg(unix)]
 fn unix_uninstall(exe_path: &str, fallback: &str) {
     match Command::new("chsh").args(["-s", fallback]).status() {
-        Ok(s) if s.success() => println!("  {}✓{} Shell restored to: {}", GREEN, RESET, fallback),
+        Ok(s) if s.success() => println!("  {}✓{} Shell restored to: {}", NICE_ORANGE_ANSI, RESET, fallback),
         _ => eprintln!(
             "  {}✗{} Failed. Run manually: chsh -s {}",
             YELLOW, RESET, fallback
@@ -752,7 +796,7 @@ fn unix_uninstall(exe_path: &str, fallback: &str) {
 }
 
 #[cfg(windows)]
-fn windows_install(exe_path: &str) {
+fn windows_install(exe_path: &str) -> bool {
     println!("  Windows Terminal setup:");
     if let Some(settings_path) = find_windows_terminal_settings() {
         println!("  Found: {}", settings_path.display());
@@ -771,6 +815,7 @@ fn windows_install(exe_path: &str) {
         "  Manual setup: Add {} as a profile in your terminal.",
         exe_path
     );
+    true
 }
 
 #[cfg(windows)]
