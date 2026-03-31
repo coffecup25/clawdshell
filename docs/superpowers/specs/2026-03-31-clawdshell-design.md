@@ -18,9 +18,10 @@ Personal workstation shell. The user sets clawdshell as their login shell so eve
 Terminal launches clawdshell
   -> Load config from ~/.config/clawdshell/config.toml (optional, defaults if missing)
   -> Resolve tool binary (lookup in PATH or use configured command)
-  -> Show banner (if enabled):
-       "clawdshell v0.1.0 - launching claude
-        Tip: Ctrl+D to drop to /bin/zsh"
+  -> Show companion greeting (if enabled):
+       [companion sprite]  clawdshell v0.1.0
+                           launching claude...
+                           Ctrl+D to drop to /bin/zsh
   -> Spawn tool as child process with configured args + CLI passthrough args
   -> Wait for tool to exit
   -> Spawn fallback shell as child process
@@ -65,13 +66,16 @@ On Unix, the fallback shell is launched via `exec` (replaces the clawdshell proc
 
 **Location:** `~/.config/clawdshell/config.toml` (override with `CLAWDSHELL_CONFIG` env var)
 
-Configuration is optional. If no config file exists, defaults apply: tool=claude, auto-detect fallback shell, banner on. Set `CLAWDSHELL_DEBUG=1` for diagnostic output to stderr.
+Configuration is optional. If no config file exists, defaults apply: tool=claude, auto-detect fallback shell, companion on. Set `CLAWDSHELL_DEBUG=1` for diagnostic output to stderr.
 
 ```toml
 [defaults]
 tool = "claude"              # Which [tools.*] section to use
 fallback_shell = "/bin/zsh"  # Auto-detected and saved during --install
-show_banner = true           # Show startup banner
+
+[companion]
+enabled = true               # Show companion on startup, transitions, and errors
+seed = "a7f2b3"             # Auto-generated on first launch, determines your companion
 
 [tools.claude]
 command = "claude"           # Binary name or absolute path (defaults to tool name)
@@ -84,6 +88,81 @@ args = ["--full-auto"]
 command = "/usr/local/bin/gemini-cli"
 args = []
 ```
+
+## Companion System
+
+Each clawdshell installation has a persistent companion — a randomly generated ASCII creature that appears throughout the shell lifecycle. The companion is determined by a seed auto-generated on first launch and stored in config, so you always get the same one.
+
+### Companion Generation
+
+On first launch (no `[companion]` section in config):
+1. Generate a random seed
+2. Derive species, eyes, hat, and rarity from the seed (same weighted system as Claude Code: common 60%, uncommon 25%, rare 10%, epic 4%, legendary 1%)
+3. Save seed to config
+4. Play a brief "hatching" animation
+
+### Where the Companion Appears
+
+**Startup greeting** (replaces traditional banner):
+```
+   /\_/\
+  ( ·   ·)   clawdshell v0.1.0
+  (  ω  )    launching claude...
+  (")_(")    Ctrl+D to drop to /bin/zsh
+```
+
+**Fallback shell transition** (tool exits):
+```
+   /\_/\
+  ( ·   ·)   dropping to /bin/zsh
+  (  ω  )~   type 'claude' to come back
+  (")_(")
+```
+
+**Error states** (tool not found):
+```
+   /\_/\
+  ( ×   ×)   'codex' not found in PATH
+  (  ω  )    falling back to /bin/zsh
+  (")_(")
+```
+
+**First launch** — hatching animation when the companion is generated for the first time.
+
+**Stats card** via `clawdshell --companion`:
+```
+  ╭─────────────────────╮
+  │   /\_/\             │
+  │  ( ·   ·)    Mochi  │
+  │  (  ω  )     ★★★   │
+  │  (")_(")     rare   │
+  ├─────────────────────┤
+  │ DEBUGGING  ████░ 8  │
+  │ PATIENCE   ██░░░ 4  │
+  │ CHAOS      █████ 10 │
+  │ WISDOM     ███░░ 6  │
+  │ SNARK      ████░ 7  │
+  ╰─────────────────────╯
+```
+
+### Animation
+
+Same system as Claude Code:
+- 500ms per tick
+- 15-tick idle sequence: `[0, 0, 0, 0, 1, 0, 0, 0, -1, 0, 0, 2, 0, 0, 0]`
+- Blink: eyes replaced with `-`
+- Used during startup greeting, hatching, and install script download
+
+### Companion in Narrow Terminals
+
+When terminal width < 100 cols, collapse to single-line face mode:
+```
+=·ω·= launching claude... (Ctrl+D for /bin/zsh)
+```
+
+### Disabling
+
+Set `companion.enabled = false` in config. When disabled, no companion output is shown — the tool launches silently.
 
 ### Resolution Order for Tool Binary
 
@@ -109,6 +188,7 @@ clawdshell                     # Normal startup (launch tool -> fallback shell)
 clawdshell --install           # Register as login shell
 clawdshell --uninstall         # Restore previous shell
 clawdshell --set-tool <name>   # Quick switch: sets defaults.tool in config
+clawdshell --companion         # Show your companion's stats card
 clawdshell --version           # Print version
 clawdshell --help              # Print help (includes full config reference)
 clawdshell -- --resume         # Everything after -- is passed to the tool
@@ -128,6 +208,7 @@ OPTIONS:
     --install              Register clawdshell as your login shell
     --uninstall            Restore your previous login shell
     --set-tool <NAME>      Set the default tool (e.g., claude, codex, gemini)
+    --companion            Show your companion's stats card
     --version              Print version
     --help                 Print this help
 
@@ -144,7 +225,10 @@ CONFIG:
     [defaults]
     tool = "claude"            # Which tool to launch
     fallback_shell = "/bin/zsh"  # Shell to drop to after tool exits
-    show_banner = true         # Show startup banner
+
+    [companion]
+    enabled = true             # Show companion on startup/transitions/errors
+    seed = "a7f2b3"           # Auto-generated, determines your companion
 
     [tools.claude]
     command = "claude"         # Binary name or path (defaults to tool name)
@@ -263,7 +347,7 @@ clawdshell/
 │   ├── main.rs          # CLI parsing (clap), entry point
 │   ├── config.rs        # Config loading/saving, defaults, TOML serde
 │   ├── install.rs       # --install / --uninstall logic per platform
-│   ├── banner.rs        # Banner display
+│   ├── companion.rs     # Companion generation, rendering, animation, stats card
 │   ├── shell.rs         # Spawn tool, spawn fallback shell, -c forwarding
 │   └── detect.rs        # Detect available tools in PATH, detect current shell
 ├── install.sh           # curl-pipe-sh installer with companion animation
@@ -300,5 +384,5 @@ No async runtime. This is a synchronous, short-lived process.
 | Architecture | Thin wrapper | Unix philosophy - do one thing well, tool handles the rest |
 | Tool coupling | Tool-agnostic | Configurable per-tool args, supports any binary |
 | Fallback shell | Configurable with auto-detect | Snapshot on install, user can override, handles edge case where $SHELL becomes clawdshell |
-| Banner | On by default, easy disable | Quick orientation without clutter, `show_banner = false` |
+| Companion | Persistent per-install, appears at all transitions | Replaces traditional banner with personality; disabled via `companion.enabled = false` |
 | Install script animation | Claude Code companion sprites | Fun loading experience, matches Claude ecosystem aesthetic |
