@@ -11,6 +11,12 @@ set -e
 VERSION="${CLAWDSHELL_VERSION:-latest}"
 REPO="${CLAWDSHELL_REPO:-coffecup25/clawdshell}"
 
+# If stdin is piped (curl | sh), reopen from terminal so TUI works.
+# The script is already fully read into sh's memory at this point.
+if [ ! -t 0 ]; then
+    exec </dev/tty
+fi
+
 detect_platform() {
     OS="$(uname -s)"
     ARCH="$(uname -m)"
@@ -70,9 +76,8 @@ main() {
         *) export PATH="$HOME/.local/bin:$PATH" ;;
     esac
 
-    # Hand off to the binary — reopen stdin from /dev/tty so ratatui TUI works
-    # (curl | sh pipes stdin, which breaks interactive terminal apps)
-    "$DEST" --install </dev/tty
+    # Hand off to the binary — TUI works because we reopened stdin above
+    "$DEST" --install
 }
 
 main "$@"
