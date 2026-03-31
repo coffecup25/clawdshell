@@ -8,112 +8,185 @@ const BOLD: &str = "\x1b[1m";
 const DIM: &str = "\x1b[2m";
 const RESET: &str = "\x1b[0m";
 
-const TITLE_TEXT: &str = "CLAWDSHELL";
-const BOX_INNER_WIDTH: usize = 30;
+// Each letter is 5 lines tall. Letters: C L A W D S H E L L
+// Using █ block characters for filled look.
+// Each letter is 6 chars wide (5 + 1 space separator).
+const LETTER_HEIGHT: usize = 5;
 
-fn box_top() -> String {
-    format!("╔{}╗", "═".repeat(BOX_INNER_WIDTH))
+fn get_letter(ch: char) -> [&'static str; 5] {
+    match ch {
+        'C' => [
+            " ████ ",
+            "█     ",
+            "█     ",
+            "█     ",
+            " ████ ",
+        ],
+        'L' => [
+            "█     ",
+            "█     ",
+            "█     ",
+            "█     ",
+            "█████ ",
+        ],
+        'A' => [
+            " ███  ",
+            "█   █ ",
+            "█████ ",
+            "█   █ ",
+            "█   █ ",
+        ],
+        'W' => [
+            "█   █ ",
+            "█   █ ",
+            "█ █ █ ",
+            "██ ██ ",
+            " █ █  ",
+        ],
+        'D' => [
+            "████  ",
+            "█   █ ",
+            "█   █ ",
+            "█   █ ",
+            "████  ",
+        ],
+        'S' => [
+            " ████ ",
+            "█     ",
+            " ███  ",
+            "    █ ",
+            "████  ",
+        ],
+        'H' => [
+            "█   █ ",
+            "█   █ ",
+            "█████ ",
+            "█   █ ",
+            "█   █ ",
+        ],
+        'E' => [
+            "█████ ",
+            "█     ",
+            "████  ",
+            "█     ",
+            "█████ ",
+        ],
+        _ => [
+            "      ",
+            "      ",
+            "      ",
+            "      ",
+            "      ",
+        ],
+    }
 }
 
-fn box_mid(content: &str, content_display_len: usize) -> String {
-    let pad = if content_display_len < BOX_INNER_WIDTH {
-        BOX_INNER_WIDTH - content_display_len
-    } else {
-        0
-    };
-    format!("║{}{}║", content, " ".repeat(pad))
+/// Build the full CLAWDSHELL text as 5 lines of block characters.
+fn build_logo_lines() -> [String; LETTER_HEIGHT] {
+    let word = "CLAWDSHELL";
+    let mut lines = [
+        String::new(),
+        String::new(),
+        String::new(),
+        String::new(),
+        String::new(),
+    ];
+    for ch in word.chars() {
+        let letter = get_letter(ch);
+        for (i, row) in letter.iter().enumerate() {
+            lines[i].push_str(row);
+        }
+    }
+    lines
 }
 
-fn box_bottom() -> String {
-    format!("╚{}╝", "═".repeat(BOX_INNER_WIDTH))
+/// Build partial logo (first N characters revealed) for animation.
+fn build_partial_logo(n_chars: usize) -> [String; LETTER_HEIGHT] {
+    let word = "CLAWDSHELL";
+    let chars: Vec<char> = word.chars().collect();
+    let show = n_chars.min(chars.len());
+
+    let mut lines = [
+        String::new(),
+        String::new(),
+        String::new(),
+        String::new(),
+        String::new(),
+    ];
+    for (idx, &ch) in chars.iter().enumerate() {
+        let letter = if idx < show {
+            get_letter(ch)
+        } else {
+            get_letter(' ')
+        };
+        for (i, row) in letter.iter().enumerate() {
+            lines[i].push_str(row);
+        }
+    }
+    lines
 }
 
-/// Animate the title box typing in letter-by-letter, to the right of the companion.
+/// Animate the logo typing in letter-by-letter to the right of the companion.
 pub fn animate_title(companion: &Companion) -> io::Result<()> {
     let mut stdout = io::stdout();
     let sprite_lines = render::render_sprite(companion, 0);
-    let sprite_width = 14; // sprite is ~12 chars + padding
 
-    // The box is 3 lines. We'll align it vertically centered with the sprite.
-    // sprite is 4-5 lines, box is 3 lines. Put box at lines 0-2 of sprite.
-    let box_start_line = 0;
+    let total_height = sprite_lines.len().max(LETTER_HEIGHT);
 
-    let top = box_top();
-    let bottom = box_bottom();
-
-    // Draw sprite + empty box
-    let total_lines = sprite_lines.len().max(box_start_line + 3);
-    println!(); // blank line above
-    for i in 0..total_lines {
+    // Draw companion + empty space first
+    let empty_logo = build_partial_logo(0);
+    println!();
+    for i in 0..total_height {
         let sprite = if i < sprite_lines.len() {
             &sprite_lines[i]
         } else {
             "            "
         };
-        let right = if i == box_start_line {
-            format!("  {}{}{}", BOLD, top, RESET)
-        } else if i == box_start_line + 1 {
-            format!("  {}", box_mid("", 0))
-        } else if i == box_start_line + 2 {
-            format!("  {}{}{}", BOLD, bottom, RESET)
+        let logo = if i < LETTER_HEIGHT {
+            &empty_logo[i]
         } else {
-            String::new()
+            ""
         };
-        writeln!(stdout, " {}{}", sprite, right)?;
+        writeln!(stdout, " {}  {}{}{}", sprite, BOLD, logo, RESET)?;
     }
     stdout.flush()?;
 
-    std::thread::sleep(std::time::Duration::from_millis(200));
+    std::thread::sleep(std::time::Duration::from_millis(300));
 
-    // Type letters into the middle line, one by one
-    let letters: Vec<char> = TITLE_TEXT.chars().collect();
-    let mid_row_offset = total_lines - (box_start_line + 1); // lines from bottom to middle row
+    // Animate letters appearing one by one
+    let word_len = "CLAWDSHELL".len();
+    for n in 1..=word_len {
+        let logo_lines = build_partial_logo(n);
 
-    // Position: the middle row of the box
-    // We need to go up from current position to that row
-    let lines_from_bottom = total_lines - (box_start_line + 1);
+        // Move cursor up to redraw
+        execute!(stdout, cursor::MoveUp(total_height as u16))?;
 
-    let mut revealed = String::new();
-    for (i, ch) in letters.iter().enumerate() {
-        revealed.push(*ch);
-
-        // Build the padded content: center the text in the box
-        let text_with_padding = format!(
-            "{}{}   {}{}",
-            " ".repeat(3),
-            BOLD,
-            revealed,
-            RESET
-        );
-        let display_len = 3 + 3 + revealed.len(); // padding + "   " + text
-        let mid = box_mid(&text_with_padding, display_len);
-
-        // Move up to the middle row
-        execute!(stdout, cursor::MoveUp(lines_from_bottom as u16))?;
-        execute!(stdout, cursor::MoveToColumn(0))?;
-
-        // Redraw: sprite + box middle
-        let sprite = if (box_start_line + 1) < sprite_lines.len() {
-            &sprite_lines[box_start_line + 1]
-        } else {
-            "            "
-        };
-        write!(stdout, " {}  {}", sprite, mid)?;
-        execute!(stdout, terminal::Clear(terminal::ClearType::UntilNewLine))?;
-
-        // Move back down
-        execute!(stdout, cursor::MoveDown(lines_from_bottom as u16))?;
-        execute!(stdout, cursor::MoveToColumn(0))?;
+        for i in 0..total_height {
+            execute!(stdout, cursor::MoveToColumn(0))?;
+            let sprite = if i < sprite_lines.len() {
+                &sprite_lines[i]
+            } else {
+                "            "
+            };
+            let logo = if i < LETTER_HEIGHT {
+                &logo_lines[i]
+            } else {
+                ""
+            };
+            write!(stdout, " {}  {}{}{}", sprite, BOLD, logo, RESET)?;
+            execute!(stdout, terminal::Clear(terminal::ClearType::UntilNewLine))?;
+            writeln!(stdout)?;
+        }
         stdout.flush()?;
 
-        let delay = if i < 3 { 90 } else if i < 7 { 60 } else { 40 };
+        let delay = if n <= 3 { 100 } else if n <= 7 { 70 } else { 50 };
         std::thread::sleep(std::time::Duration::from_millis(delay));
     }
 
     Ok(())
 }
 
-/// Render the static startup greeting (for normal shell launch, no animation).
+/// Render the static startup greeting (no animation).
 pub fn render_greeting(
     tool_name: &str,
     fallback_shell: &str,
@@ -122,46 +195,41 @@ pub fn render_greeting(
 ) -> String {
     let mut out = String::new();
     let version = env!("CARGO_PKG_VERSION");
+    let logo_lines = build_logo_lines();
 
-    let top = box_top();
-    let text_padded = format!("   {}   ", TITLE_TEXT);
-    let mid = box_mid(&text_padded, text_padded.len());
-    let bottom = box_bottom();
-    let title_box = [top.as_str(), mid.as_str(), bottom.as_str()];
-
-    if terminal_width >= 70 {
+    if terminal_width >= 80 {
         let sprite_lines = render::render_sprite(companion, 0);
 
         out.push('\n');
 
-        let total_lines = sprite_lines.len().max(title_box.len() + 1);
-        for i in 0..total_lines {
+        let total_height = sprite_lines.len().max(LETTER_HEIGHT);
+        for i in 0..total_height {
             let sprite = if i < sprite_lines.len() {
                 &sprite_lines[i]
             } else {
                 "            "
             };
-            let right = if i < title_box.len() {
-                format!("{}  {}{}", BOLD, title_box[i], RESET)
-            } else if i == title_box.len() {
-                if !tool_name.is_empty() {
-                    format!(
-                        "{}  v{} · launching {} · {}{}",
-                        DIM, version, tool_name, TAGLINE, RESET
-                    )
-                } else {
-                    format!("{}  v{} · {}{}", DIM, version, TAGLINE, RESET)
-                }
+            let logo = if i < LETTER_HEIGHT {
+                format!("{}  {}{}", BOLD, logo_lines[i], RESET)
             } else {
                 String::new()
             };
-            out.push_str(&format!(" {} {}\n", sprite, right));
+            out.push_str(&format!(" {} {}\n", sprite, logo));
         }
 
-        if !fallback_shell.is_empty() {
+        if !tool_name.is_empty() {
             out.push_str(&format!(
-                "               {}Ctrl+D to drop to {}{}\n",
+                " {}v{} · launching {} · {}{}\n",
+                DIM, version, tool_name, TAGLINE, RESET
+            ));
+            out.push_str(&format!(
+                " {}Ctrl+D to drop to {}{}\n",
                 DIM, fallback_shell, RESET
+            ));
+        } else {
+            out.push_str(&format!(
+                " {}v{} · {}{}\n",
+                DIM, version, TAGLINE, RESET
             ));
         }
         out.push('\n');
