@@ -5,7 +5,24 @@ const KNOWN_TOOLS: &[&str] = &["claude", "codex", "gemini", "opencode", "aider",
 
 pub fn detect_fallback_shell() -> String {
     #[cfg(unix)]
-    { std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string()) }
+    {
+        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
+        let name = std::path::Path::new(&shell)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("");
+        // If $SHELL is clawdshell, don't use ourselves as fallback
+        if name == "clawdshell" {
+            // Try common shells
+            for candidate in &["/bin/zsh", "/bin/bash", "/bin/sh"] {
+                if std::path::Path::new(candidate).exists() {
+                    return candidate.to_string();
+                }
+            }
+            return "/bin/sh".to_string();
+        }
+        shell
+    }
     #[cfg(windows)]
     { std::env::var("COMSPEC").unwrap_or_else(|_| "powershell.exe".to_string()) }
 }
@@ -23,6 +40,11 @@ pub fn inherit_shell_environment(fallback_shell: &str) {
         .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or("");
+
+    // Don't recurse into ourselves
+    if shell_name == "clawdshell" {
+        return;
+    }
 
     #[cfg(unix)]
     {
