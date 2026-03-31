@@ -42,8 +42,15 @@ pub fn install(config: &mut Config) {
         // Egg hatches into companion ("An egg appeared..." shown below egg)
         let _ = companion::animate::play_hatch(&c);
 
-        // Title types in right below the companion — no clear, no jump
-        let _ = greeting::animate_title_below();
+        // Now redraw companion with title beside it — move cursor up over the companion
+        let sprite_height = crate::companion::render::render_sprite(&c, 0).len();
+        let _ = crossterm::execute!(
+            std::io::stdout(),
+            crossterm::cursor::MoveUp(sprite_height as u16)
+        );
+
+        // Title types in to the right of companion
+        let _ = greeting::animate_title(&c);
 
         println!();
         println!(
