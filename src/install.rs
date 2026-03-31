@@ -69,6 +69,7 @@ pub fn install(config: &mut Config) {
         // Title types in to the right of companion
         let _ = greeting::animate_title(&c);
 
+        println!("  {}you weren't using your terminal anyways{}", DIM, RESET);
         println!();
         println!(
             "  {}✨ {}{}{} hatched! ✨{}",
