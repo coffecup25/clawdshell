@@ -4,24 +4,31 @@ use std::process;
 use std::env;
 
 fn main() {
-    // If stdin or stdout isn't a TTY (curl | bash), re-exec with /dev/tty for all fds.
+    // If stdin or stdout isn't a TTY (curl | bash), dup2 /dev/tty onto all fds
+    // and exec ourselves. This replaces the process entirely so the fresh Rust
+    // runtime sees proper tty fds from the start — no cached pipe state.
     #[cfg(unix)]
     if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
-        use std::fs::OpenOptions;
-        if let (Ok(tty_in), Ok(tty_out), Ok(tty_err)) = (
-            OpenOptions::new().read(true).write(true).open("/dev/tty"),
-            OpenOptions::new().read(true).write(true).open("/dev/tty"),
-            OpenOptions::new().read(true).write(true).open("/dev/tty"),
-        ) {
-            let exe = std::env::current_exe().unwrap_or_default();
-            let args: Vec<String> = env::args().skip(1).collect();
-            let status = std::process::Command::new(exe)
-                .args(&args)
-                .stdin(tty_in)
-                .stdout(tty_out)
-                .stderr(tty_err)
-                .status();
-            process::exit(status.map(|s| s.code().unwrap_or(1)).unwrap_or(1));
+        unsafe {
+            let tty_fd = libc::open(
+                b"/dev/tty\0".as_ptr() as *const libc::c_char,
+                libc::O_RDWR,
+            );
+            if tty_fd >= 0 {
+                libc::dup2(tty_fd, 0);
+                libc::dup2(tty_fd, 1);
+                libc::dup2(tty_fd, 2);
+                if tty_fd > 2 {
+                    libc::close(tty_fd);
+                }
+                // Re-exec ourselves — replaces this process image completely
+                use std::os::unix::process::CommandExt;
+                let exe = std::env::current_exe().unwrap_or_default();
+                let args: Vec<String> = env::args().skip(1).collect();
+                let err = std::process::Command::new(exe).args(&args).exec();
+                eprintln!("clawdshell: re-exec failed: {}", err);
+                process::exit(1);
+            }
         }
     }
 
