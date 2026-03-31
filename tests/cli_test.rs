@@ -14,9 +14,9 @@ fn test_greeting_narrow_uses_face() {
     let greeting = clawdshell::greeting::render_greeting(
         "claude", "/bin/zsh",
         &clawdshell::companion::generate("test"),
-        60,
+        50,
     );
-    assert!(!greeting.contains("___/"));
+    assert!(greeting.contains("CLAWDSHELL"));
     assert!(greeting.contains("launching claude"));
 }
 

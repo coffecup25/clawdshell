@@ -1,26 +1,11 @@
 use crate::companion::{render, Companion};
 
-/// The ASCII art tagline — baked in as a static string.
-/// Use a compact figlet-style font that fits in ~80 columns.
-const TAGLINE: &str = r#"
- _   _                                   _   _            _
-| | | | ___  _   _  __      _____ _ __ | |_| |_         | |_
-| |_| |/ _ \| | | | \ \ /\ / / _ | '__||  _|  _|       | | |
- \__, | (_) | |_| |  \ V  V /  __| |   | | | |_    _   |_|_|
- |___/ \___/ \__,_|   \_/\_/ \___|_|    \_|  \__|  (_)  (_|_)
-          _                                   _
- _  _ ___(_)_ _  __ _   _  _ ___ _  _ _ _   | |_ ___ _ _ _ __
-| || (_-<| | ' \/ _` | | || / _ | || | '_|  |  _/ -_| '_| '  \
- \_,_/__/|_|_||_\__, |  \_, \___/\_,_|_|     \__\___|_| |_|_|_|
-                |___/   |__/
-                                  _
-  __ _ _ _ _  ___ __ ____ _ _  _| _|___
- / _` | ' | || \ V  V / _` | || |_  (_-<
- \__,_|_||_\_, |\_/\_/\__,_|\_, /__//__/
-           |__/              |__/
-"#;
+const TAGLINE: &str = "you weren't using your terminal anyways";
 
-const TAGLINE_NARROW: &str = "you weren't using your terminal anyways";
+// ANSI escape codes
+const BOLD: &str = "\x1b[1m";
+const DIM: &str = "\x1b[2m";
+const RESET: &str = "\x1b[0m";
 
 pub fn render_greeting(
     tool_name: &str,
@@ -29,23 +14,42 @@ pub fn render_greeting(
     terminal_width: u16,
 ) -> String {
     let mut out = String::new();
+    let version = env!("CARGO_PKG_VERSION");
+    let cwd = std::env::current_dir()
+        .map(|p| p.display().to_string())
+        .unwrap_or_default();
 
-    if terminal_width >= 100 {
-        out.push_str(TAGLINE);
-        out.push_str(&format!("  — {} —\n\n", TAGLINE_NARROW));
+    if terminal_width >= 60 {
+        // Wide mode: sprite on left, info on right (like Claude Code)
         let sprite_lines = render::render_sprite(companion, 0);
+
         let info_lines = [
-            format!("clawdshell v{} — launching {}", env!("CARGO_PKG_VERSION"), tool_name),
-            format!("Ctrl+D to drop to {}", fallback_shell),
+            format!("{}CLAWDSHELL{} v{}", BOLD, RESET, version),
+            format!("launching {} {}{}{}", tool_name, DIM, TAGLINE, RESET),
+            cwd,
         ];
-        for (i, line) in sprite_lines.iter().enumerate() {
+
+        out.push('\n');
+        for (i, sprite_line) in sprite_lines.iter().enumerate() {
             let right = if i < info_lines.len() { &info_lines[i] } else { "" };
-            out.push_str(&format!("{}   {}\n", line, right));
+            out.push_str(&format!("{}    {}\n", sprite_line, right));
         }
+        out.push('\n');
+        out.push_str(&format!(
+            "{}Ctrl+D to drop to {}{}\n",
+            DIM, fallback_shell, RESET
+        ));
     } else {
+        // Narrow mode: compact
         let face = render::render_face(companion);
-        out.push_str(&format!("{}\n", TAGLINE_NARROW));
-        out.push_str(&format!("{} launching {}... (Ctrl+D for {})\n", face, tool_name, fallback_shell));
+        out.push_str(&format!(
+            "\n{}CLAWDSHELL{} {} launching {}\n",
+            BOLD, RESET, face, tool_name
+        ));
+        out.push_str(&format!(
+            "{}Ctrl+D for {}{}\n",
+            DIM, fallback_shell, RESET
+        ));
     }
 
     out
