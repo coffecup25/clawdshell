@@ -3,9 +3,13 @@ set -e
 
 # ClawdShell installer — downloads the binary, then hands off to it
 # Usage: curl -fsSL https://clawdshell.dev | sh
+#
+# Environment variables:
+#   CLAWDSHELL_VERSION  - version to install (default: latest)
+#   CLAWDSHELL_REPO     - GitHub repo (default: RLabs-Inc/clawdshell)
 
 VERSION="${CLAWDSHELL_VERSION:-latest}"
-REPO="${CLAWDSHELL_REPO:-user/clawdshell}"
+REPO="${CLAWDSHELL_REPO:-RLabs-Inc/clawdshell}"
 
 detect_platform() {
     OS="$(uname -s)"
@@ -30,20 +34,41 @@ main() {
     INSTALL_DIR="$HOME/.local/bin"
     mkdir -p "$INSTALL_DIR"
 
-    DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${VERSION}/clawdshell-${PLATFORM}"
+    BINARY_NAME="clawdshell-${PLATFORM}"
+
+    if [ "$VERSION" = "latest" ]; then
+        DOWNLOAD_URL="https://github.com/${REPO}/releases/latest/download/${BINARY_NAME}"
+    else
+        DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${VERSION}/${BINARY_NAME}"
+    fi
+
     DEST="${INSTALL_DIR}/clawdshell"
 
     echo "Downloading clawdshell for ${PLATFORM}..."
 
     if command -v curl >/dev/null 2>&1; then
-        curl -fsSL "$DOWNLOAD_URL" -o "$DEST" || { echo "Download failed: $DOWNLOAD_URL"; exit 1; }
+        curl -fsSL "$DOWNLOAD_URL" -o "$DEST" || {
+            echo "Download failed: $DOWNLOAD_URL"
+            echo "Make sure a release exists at https://github.com/${REPO}/releases"
+            exit 1
+        }
     elif command -v wget >/dev/null 2>&1; then
-        wget -q "$DOWNLOAD_URL" -O "$DEST" || { echo "Download failed."; exit 1; }
+        wget -q "$DOWNLOAD_URL" -O "$DEST" || {
+            echo "Download failed: $DOWNLOAD_URL"
+            exit 1
+        }
     else
-        echo "Error: curl or wget required"; exit 1
+        echo "Error: curl or wget required"
+        exit 1
     fi
 
     chmod +x "$DEST"
+
+    # Ensure ~/.local/bin is in PATH for this session
+    case ":$PATH:" in
+        *":$HOME/.local/bin:"*) ;;
+        *) export PATH="$HOME/.local/bin:$PATH" ;;
+    esac
 
     # Hand off to the binary — it handles everything else with proper TUI
     "$DEST" --install
