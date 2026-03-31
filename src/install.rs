@@ -234,12 +234,12 @@ enum HatchResult {
 }
 
 /// Run Screen 1 (egg hatching, title animation, companion selection) using ratatui.
-/// Opens /dev/tty directly so it works regardless of how the binary was invoked
-/// (curl | sh, piped stdin, etc.).
+/// On Unix: opens /dev/tty directly so it works from curl | sh.
+/// On Windows: uses stdout normally (user runs --install directly from console).
 fn run_hatch_screen(companion: &Companion) -> HatchResult {
     use ratatui::backend::CrosstermBackend;
 
-    // Open /dev/tty directly — this fully owns the terminal
+    #[cfg(unix)]
     let tty = match std::fs::OpenOptions::new()
         .read(true)
         .write(true)
@@ -247,16 +247,18 @@ fn run_hatch_screen(companion: &Companion) -> HatchResult {
     {
         Ok(f) => f,
         Err(_) => {
-            // No TTY available (e.g., CI, headless) — skip TUI
             eprintln!("clawdshell: no terminal available, skipping setup wizard");
             return HatchResult::Keep;
         }
     };
 
-    // Use crossterm's raw mode — it opens /dev/tty internally
     let _ = crossterm::terminal::enable_raw_mode();
 
+    #[cfg(unix)]
     let backend = CrosstermBackend::new(tty);
+    #[cfg(windows)]
+    let backend = CrosstermBackend::new(std::io::stdout());
+
     let mut terminal = match Terminal::new(backend) {
         Ok(t) => t,
         Err(_) => {
@@ -321,15 +323,36 @@ fn read_key_from_tty(tty_fd: i32, timeout_ms: u64) -> Option<KeyCode> {
     }
 }
 
-fn hatch_render_loop(
-    terminal: &mut Terminal<ratatui::backend::CrosstermBackend<std::fs::File>>,
+/// Poll for a key press.
+/// Unix: reads from /dev/tty fd directly (works even when stdin is piped).
+/// Windows: uses crossterm events (console always available when run directly).
+#[cfg(unix)]
+fn poll_key_impl(tty_fd: i32, timeout_ms: u64) -> Option<KeyCode> {
+    read_key_from_tty(tty_fd, timeout_ms)
+}
+
+#[cfg(windows)]
+fn poll_key_impl(_unused: i32, timeout_ms: u64) -> Option<KeyCode> {
+    if event::poll(Duration::from_millis(timeout_ms)).unwrap_or(false) {
+        if let Ok(Event::Key(key)) = event::read() {
+            if key.kind == KeyEventKind::Press {
+                return Some(key.code);
+            }
+        }
+    }
+    None
+}
+
+fn hatch_render_loop<W: std::io::Write>(
+    terminal: &mut Terminal<ratatui::backend::CrosstermBackend<W>>,
     companion: &Companion,
 ) -> HatchResult {
-    // Open /dev/tty for reading keys directly
     #[cfg(unix)]
     let key_fd = unsafe {
         libc::open(b"/dev/tty\0".as_ptr() as *const libc::c_char, libc::O_RDONLY | libc::O_NONBLOCK)
     };
+    #[cfg(windows)]
+    let key_fd: i32 = 0; // unused on Windows, poll_key_impl ignores it
 
     let egg_sequence: &[usize] = &[0, 1, 2, 1, 2, 3, 4, 5, 6, 7];
     let egg_timing: &[u64] = &[800, 300, 300, 300, 300, 600, 600, 400, 400, 300];
@@ -376,8 +399,7 @@ fn hatch_render_loop(
                         phase_start = Instant::now();
                     }
                 }
-                #[cfg(unix)]
-                if let Some(key) = read_key_from_tty(key_fd, 30) {
+                if let Some(key) = poll_key_impl(key_fd, 30) {
                     match key {
                         KeyCode::Char('c') => return HatchResult::Quit,
                         KeyCode::Esc | KeyCode::Enter => {
@@ -402,8 +424,7 @@ fn hatch_render_loop(
                         title_chars += 1;
                         phase_start = Instant::now();
                     }
-                    #[cfg(unix)]
-                    if let Some(key) = read_key_from_tty(key_fd, 10) {
+                    if let Some(key) = poll_key_impl(key_fd, 10) {
                         match key {
                             KeyCode::Char('c') => return HatchResult::Quit,
                             KeyCode::Esc | KeyCode::Enter => {
@@ -420,16 +441,17 @@ fn hatch_render_loop(
                 }
             }
             HatchPhase::Hatched => {
-                #[cfg(unix)]
-                if let Some(key) = read_key_from_tty(key_fd, 50) {
+                if let Some(key) = poll_key_impl(key_fd, 50) {
                     match key {
                         KeyCode::Up | KeyCode::Char('k') => selection = 0,
                         KeyCode::Down | KeyCode::Char('j') => selection = 1,
                         KeyCode::Enter => {
+                            #[cfg(unix)]
                             unsafe { libc::close(key_fd); }
                             return if selection == 1 { HatchResult::Reroll } else { HatchResult::Keep };
                         }
                         KeyCode::Char('c') | KeyCode::Esc | KeyCode::Char('q') => {
+                            #[cfg(unix)]
                             unsafe { libc::close(key_fd); }
                             return HatchResult::Quit;
                         }
