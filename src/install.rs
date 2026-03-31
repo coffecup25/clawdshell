@@ -3,6 +3,7 @@ use crate::config::Config;
 use crate::detect;
 use crate::greeting;
 use dialoguer::{Confirm, Select};
+use std::io::Write;
 use std::process::Command;
 
 const BOLD: &str = "\x1b[1m";
@@ -24,24 +25,45 @@ fn generate_seed() -> String {
 pub fn install(config: &mut Config) {
     let width = crossterm::terminal::size().map(|(w, _)| w).unwrap_or(80);
 
-    // --- Companion selection ---
-    if config.companion.seed.is_none() {
+    // --- Companion hatching & selection ---
+    let is_first = config.companion.seed.is_none();
+    if is_first {
         config.companion.seed = Some(generate_seed());
     }
 
+    let mut first_show = true;
     loop {
         let c = companion::generate(config.companion.seed.as_deref().unwrap());
 
-        // Clear and show banner with companion
+        // Clear screen
         print!("\x1b[2J\x1b[H");
-        print!("{}", greeting::render_greeting("", "", &c, width));
-        println!(
-            "  Meet {}{}{}, your companion!\n",
-            BOLD, c.name, RESET
-        );
+        let _ = std::io::stdout().flush();
 
+        if first_show && is_first {
+            // First time ever: play the egg hatching animation
+            println!();
+            println!("  {}An egg appeared...{}\n", DIM, RESET);
+            let _ = companion::animate::play_hatch(&c);
+            println!();
+            println!(
+                "  {}✨ {}{}{} hatched! ✨{}",
+                BOLD, GREEN, c.name, RESET, RESET
+            );
+        } else {
+            // Reroll or returning user: show with idle animation
+            print!("{}", greeting::render_greeting("", "", &c, width));
+            println!();
+            let _ = companion::animate::play_idle(&c, 6);
+            println!(
+                "\n  Meet {}{}{}, your companion!",
+                BOLD, c.name, RESET
+            );
+        }
+        first_show = false;
+
+        println!();
         let reroll = Select::new()
-            .items(&["Keep this companion", "Reroll companion"])
+            .items(&["  Keep this companion", "  Reroll companion"])
             .default(0)
             .interact()
             .unwrap_or(0);

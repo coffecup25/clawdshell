@@ -113,12 +113,14 @@ fn main() {
     if config.companion.enabled {
         let width = terminal::size().map(|(w, _)| w).unwrap_or(80);
         if first_launch {
-            println!("A companion has appeared!");
-            let _ = clawdshell::companion::animate::play_idle(&companion, 15);
-            println!("Meet {}!\n", companion.name);
+            // First time: hatch the companion from an egg
+            println!("\n  \x1b[2mAn egg appeared...\x1b[0m\n");
+            let _ = clawdshell::companion::animate::play_hatch(&companion);
+            println!("\n  \x1b[1m✨ \x1b[32m{}\x1b[0m hatched! ✨\x1b[0m\n", companion.name);
+            std::thread::sleep(std::time::Duration::from_secs(2));
         }
         print!("{}", clawdshell::greeting::render_greeting(&tool_name, &shell, &companion, width));
-        // Clear screen immediately so the tool gets a clean terminal
+        // Clear screen so the tool gets a clean terminal
         print!("\x1b[2J\x1b[H");
         let _ = std::io::Write::flush(&mut std::io::stdout());
     }
