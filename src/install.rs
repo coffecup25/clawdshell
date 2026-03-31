@@ -340,35 +340,30 @@ fn render_egg_frame(frame: &mut ratatui::Frame, area: Rect, egg_idx: usize) {
     let egg = EGG_FRAMES[egg_idx];
     let egg_height = egg.len() as u16;
     let total_height = egg_height + 2; // egg + blank + label
+    let egg_display_width = 14u16;
 
-    // Center vertically and horizontally
+    // Center both vertically and horizontally
     let y_start = area.height.saturating_sub(total_height) / 2;
-    let egg_width = 12u16; // egg sprites are ~12 chars
-    let label = "An egg appeared...";
-    let max_content_width = egg_width.max(label.len() as u16);
-    let x_start = area.width.saturating_sub(max_content_width) / 2;
+    let x_center = area.width.saturating_sub(egg_display_width) / 2;
 
-    // Build lines — centered
     let mut lines: Vec<Line> = Vec::new();
     for row in egg {
-        let row_str: &str = row;
-        let pad = (max_content_width as usize).saturating_sub(row_str.trim_end().len()) / 2;
-        lines.push(Line::from(Span::raw(format!("{}{}", " ".repeat(pad), row_str))));
+        lines.push(Line::from(Span::raw(*row)));
     }
     lines.push(Line::from(""));
-    let label_pad = (max_content_width as usize).saturating_sub(label.len()) / 2;
     lines.push(Line::from(Span::styled(
-        format!("{}{}", " ".repeat(label_pad), label),
+        " An egg appeared...",
         Style::default().add_modifier(Modifier::DIM),
     )));
 
     let paragraph = Paragraph::new(lines);
-    let egg_area = Rect::new(x_start.min(area.x + area.width - 1), area.y + y_start, area.width.saturating_sub(x_start), total_height);
+    let egg_area = Rect::new(x_center, area.y + y_start, egg_display_width + 6, total_height);
     frame.render_widget(paragraph, egg_area);
 }
 
 /// Render companion sprite + CLAWDSHELL title (partially or fully revealed),
 /// plus optional hatched message and selection.
+/// `x_offset` allows sliding the companion from center to left during reveal.
 fn render_companion_with_title(
     frame: &mut ratatui::Frame,
     area: Rect,
@@ -383,10 +378,22 @@ fn render_companion_with_title(
     let sprite_height = sprite_lines.len();
     let row_count = sprite_height.max(logo_height);
 
+    // Calculate where the companion should be horizontally
+    // When title_chars=0, companion is centered. As letters reveal, it slides left.
+    let sprite_width = 14u16;
+    let logo_total_width = 83u16; // ~8 chars × 10 letters + W is wider
+    let final_x = 1u16; // final resting position (left side)
+    let center_x = area.width.saturating_sub(sprite_width) / 2;
+
+    // Interpolate x position: center → left as title_chars goes 0 → 10
+    let progress = (title_chars as f32 / 10.0).min(1.0);
+    let x_pos = center_x as f32 - (center_x as f32 - final_x as f32) * progress;
+    let x_pos = x_pos.max(0.0) as u16;
+
     // Calculate total content height
-    let mut total_lines: usize = row_count; // companion + title rows
+    let mut total_lines: usize = row_count;
     if show_hatched {
-        total_lines += 5; // tagline + blank + hatched msg + blank + selection (2 items)
+        total_lines += 5; // tagline + blank + hatched msg + blank + selection
     }
 
     // Center vertically
@@ -395,6 +402,7 @@ fn render_companion_with_title(
     let mut lines: Vec<Line> = Vec::new();
 
     // Companion sprite side-by-side with logo
+    let pad = " ".repeat(x_pos as usize);
     for i in 0..row_count {
         let sprite_part = if i < sprite_height {
             &sprite_lines[i]
@@ -408,7 +416,7 @@ fn render_companion_with_title(
         };
 
         let spans = vec![
-            Span::raw(format!(" {}  ", sprite_part)),
+            Span::raw(format!("{}{}  ", pad, sprite_part)),
             Span::styled(
                 logo_part.to_string(),
                 Style::default()
