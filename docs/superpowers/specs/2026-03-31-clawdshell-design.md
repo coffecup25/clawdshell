@@ -19,9 +19,8 @@ Terminal launches clawdshell
   -> Load config from ~/.config/clawdshell/config.toml (optional, defaults if missing)
   -> Resolve tool binary (lookup in PATH or use configured command)
   -> Show companion greeting (if enabled):
-       [companion sprite]  clawdshell v0.1.0
-                           launching claude...
-                           Ctrl+D to drop to /bin/zsh
+       ASCII art: "You weren't using your terminal anyways"
+       [companion sprite] + version + tool info + fallback tip
   -> Spawn tool as child process with configured args + CLI passthrough args
   -> Wait for tool to exit
   -> Spawn fallback shell as child process
@@ -105,10 +104,29 @@ On first launch (no `[companion]` section in config):
 
 **Startup greeting** (replaces traditional banner):
 ```
+                                                     _  _            _
+  _   _  ___  _   _    __      _____ _ __ ___ _ __ ( )| |_         | |
+ | | | |/ _ \| | | |   \ \ /\ / / _ \ '__/ _ \ '_ \|/| __|        | |
+ | |_| | (_) | |_| |    \ V  V /  __/ | |  __/ | | | | |_    _   _|_|
+  \__, |\___/ \__,_|     \_/\_/ \___|_|  \___|_| |_|  \__|  | | | (_)
+  |___/                                                      |_| |_|_
+             _                                        _
+  _   _ ___ (_)_ __   __ _   _   _  ___  _   _ _ __ | |_ ___ _ __ _ __ ___
+ | | | / __|| | '_ \ / _` | | | | |/ _ \| | | | '__|| __/ _ \ '__| '_ ` _ \
+ | |_| \__ \| | | | | (_| | | |_| | (_) | |_| | |   | ||  __/ |  | | | | | |
+  \__,_|___/|_|_| |_|\__, |  \__, |\___/ \__,_|_|    \__\___|_|  |_| |_| |_|
+                      |___/   |___/
+                                    __
+   __ _ _ __  _   ___      ____ _ / _|_ ___
+  / _` | '_ \| | | \ \ /\ / / _` | |_| / __|
+ | (_| | | | | |_| |\ V  V / (_| |  _|  \__ \
+  \__,_|_| |_|\__, | \_/\_/ \__,_|_| |_||___/
+              |___/
+
    /\_/\
-  ( ·   ·)   clawdshell v0.1.0
-  (  ω  )    launching claude...
-  (")_(")    Ctrl+D to drop to /bin/zsh
+  ( ·   ·)   clawdshell v0.1.0 — launching claude
+  (  ω  )    Ctrl+D to drop to /bin/zsh
+  (")_(")
 ```
 
 **Fallback shell transition** (tool exits):
