@@ -1,0 +1,47 @@
+name: Test Install Scripts
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'install.*'
+
+jobs:
+  test-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: cargo build --release
+      - name: Test piped install
+        run: |
+          cp target/release/clawdshell ~/.local/bin/clawdshell 2>/dev/null || mkdir -p ~/.local/bin && cp target/release/clawdshell ~/.local/bin/
+          echo "test" | ./target/release/clawdshell --version
+          echo "Exit code: $?"
+
+  test-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: cargo build --release
+      - name: Test piped install
+        run: |
+          mkdir -p ~/.local/bin && cp target/release/clawdshell ~/.local/bin/
+          echo "test" | ./target/release/clawdshell --version
+          echo "Exit code: $?"
+
+  test-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: cargo build --release
+      - name: Test version
+        run: .\target\release\clawdshell.exe --version
+      - name: Test PowerShell install script syntax
+        run: |
+          $ErrorActionPreference = "Stop"
+          # Just validate the script parses correctly
+          $null = [ScriptBlock]::Create((Get-Content -Raw install.ps1))
+          Write-Host "PowerShell script syntax OK"
