@@ -66,14 +66,14 @@ main() {
         *) export PATH="$HOME/.local/bin:$PATH" ;;
     esac
 
-    # Write a temp script and run it — this gives the binary a completely
-    # clean shell context with terminal stdin (not the curl pipe).
-    TMPSCRIPT=$(mktemp)
-    echo "#!/bin/sh" > "$TMPSCRIPT"
-    echo "'$DEST' --install" >> "$TMPSCRIPT"
-    echo "rm -f '$TMPSCRIPT'" >> "$TMPSCRIPT"
-    chmod +x "$TMPSCRIPT"
-    bash "$TMPSCRIPT"
+    # Use `script` to allocate a fresh PTY so the TUI gets real terminal fds.
+    # This is the only reliable way to escape a pipe context on macOS/Linux.
+    if [ "$(uname -s)" = "Darwin" ]; then
+        script -q /dev/null "$DEST" --install
+    else
+        # Linux script has different syntax
+        script -qc "$DEST --install" /dev/null
+    fi
 }
 
 main "$@"
