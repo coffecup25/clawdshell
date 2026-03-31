@@ -6,10 +6,8 @@
   <img src="https://img.shields.io/github/license/coffecup25/clawdshell?style=flat-square&color=D97757" alt="license">
 </p>
 
-<h1 align="center">clawdshell</h1>
-
 <p align="center">
-  <i>Lets be real, you weren't using the terminal anyway.</i>
+  <img src="assets/banner.png" alt="clawdshell" width="700">
 </p>
 
 <p align="center">
