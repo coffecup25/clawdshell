@@ -6,14 +6,11 @@ const BOLD: &str = "\x1b[1m";
 const DIM: &str = "\x1b[2m";
 const RESET: &str = "\x1b[0m";
 
-// ASCII art logo — 6 lines tall, standard figlet style
-const LOGO: [&str; 6] = [
-    r"  _____   _           _    _ ____    _____ _    _ ______ _      _      ",
-    r" / ____| | |         | |  | |  _ \  / ____| |  | |  ____| |    | |     ",
-    r"| |      | |     __ _| |  | | | | || (___ | |__| | |__  | |    | |     ",
-    r"| |      | |    / _` | |/\| | | | | \___ \|  __  |  __| | |    | |     ",
-    r"| |____  | |___| (_| \  /\  / |_| | ____) | |  | | |____| |____| |____ ",
-    r" \_____| |______\__,_|\/  \/|____/ |_____/|_|  |_|______|______|______|",
+// Bubble-charm style title: clean spaced letters in a box
+const TITLE_BOX: [&str; 3] = [
+    "╔══════════════════════════════════════════╗",
+    "║   C  L  A  W  D  S  H  E  L  L          ║",
+    "╚══════════════════════════════════════════╝",
 ];
 
 /// Render the startup greeting.
@@ -27,42 +24,42 @@ pub fn render_greeting(
     let mut out = String::new();
     let version = env!("CARGO_PKG_VERSION");
 
-    if terminal_width >= 80 {
-        // Wide: companion on left, logo on right
+    if terminal_width >= 70 {
         let sprite_lines = render::render_sprite(companion, 0);
 
         out.push('\n');
 
-        // Merge sprite and logo side by side
-        let max_lines = sprite_lines.len().max(LOGO.len());
-        for i in 0..max_lines {
+        // Companion sprite + title box side by side
+        // Title box is 3 lines, sprite is 4-5 lines. Align vertically.
+        let total_lines = sprite_lines.len().max(TITLE_BOX.len() + 1);
+        for i in 0..total_lines {
             let sprite = if i < sprite_lines.len() {
                 &sprite_lines[i]
             } else {
                 "            "
             };
-            let logo = if i < LOGO.len() {
-                format!("{}{}{}", BOLD, LOGO[i], RESET)
+            let right = if i < TITLE_BOX.len() {
+                format!("{}  {}{}", BOLD, TITLE_BOX[i], RESET)
+            } else if i == TITLE_BOX.len() {
+                // Subtitle line right after the box
+                if !tool_name.is_empty() {
+                    format!(
+                        "{}  v{} · launching {} · {}{}",
+                        DIM, version, tool_name, TAGLINE, RESET
+                    )
+                } else {
+                    format!("{}  v{} · {}{}", DIM, version, TAGLINE, RESET)
+                }
             } else {
                 String::new()
             };
-            out.push_str(&format!(" {}  {}\n", sprite, logo));
+            out.push_str(&format!(" {} {}\n", sprite, right));
         }
 
-        // Subtitle
-        if !tool_name.is_empty() {
+        if !fallback_shell.is_empty() {
             out.push_str(&format!(
-                " {}v{} · launching {} · {}{}\n",
-                DIM, version, tool_name, TAGLINE, RESET
-            ));
-            out.push_str(&format!(
-                " {}Ctrl+D to drop to {}{}\n",
+                "               {}Ctrl+D to drop to {}{}\n",
                 DIM, fallback_shell, RESET
-            ));
-        } else {
-            out.push_str(&format!(
-                " {}v{} · {}{}\n",
-                DIM, version, TAGLINE, RESET
             ));
         }
         out.push('\n');
