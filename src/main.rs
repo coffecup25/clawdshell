@@ -118,6 +118,12 @@ fn main() {
             println!("Meet {}!\n", companion.name);
         }
         print!("{}", clawdshell::greeting::render_greeting(&tool_name, &shell, &companion, width));
+
+        // Brief pause so the user sees the greeting, then clear for the tool
+        std::thread::sleep(std::time::Duration::from_secs(2));
+        // Clear screen and move cursor to top
+        print!("\x1b[2J\x1b[H");
+        let _ = std::io::Write::flush(&mut std::io::stdout());
     }
 
     clawdshell::shell::setup_signal_forwarding();
