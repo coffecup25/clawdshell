@@ -2,7 +2,7 @@
 set -e
 
 # ClawdShell installer
-# Usage: curl -fsSL https://clawdshell.dev | bash
+# Usage: bash <(curl -fsSL https://clawdshell.dev)
 
 VERSION="${CLAWDSHELL_VERSION:-latest}"
 REPO="${CLAWDSHELL_REPO:-coffecup25/clawdshell}"
@@ -70,16 +70,8 @@ main() {
     echo "  Installed clawdshell to $DEST"
     echo ""
 
-    # If we have a real terminal, run --install directly with the TUI
-    if [ -t 0 ] && [ -t 1 ]; then
-        "$DEST" --install
-    else
-        # Piped context (curl | bash) — can't run interactive TUI
-        echo "  Run the setup wizard:"
-        echo ""
-        echo "    clawdshell --install"
-        echo ""
-    fi
+    # Run the interactive installer
+    "$DEST" --install
 }
 
 main "$@"
