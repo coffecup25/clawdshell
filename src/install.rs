@@ -1,47 +1,137 @@
+use crate::companion;
 use crate::config::Config;
 use crate::detect;
+use crate::greeting;
+use dialoguer::{Confirm, Select};
 use std::process::Command;
-use std::io::{self, Write, BufRead};
 
-fn prompt_confirm(message: &str) -> bool {
-    print!("{} [y/N] ", message);
-    io::stdout().flush().unwrap();
-    let mut input = String::new();
-    io::stdin().lock().read_line(&mut input).unwrap();
-    input.trim().eq_ignore_ascii_case("y")
+const BOLD: &str = "\x1b[1m";
+const DIM: &str = "\x1b[2m";
+const GREEN: &str = "\x1b[32m";
+const CYAN: &str = "\x1b[36m";
+const YELLOW: &str = "\x1b[33m";
+const RESET: &str = "\x1b[0m";
+
+fn generate_seed() -> String {
+    let mut buf = [0u8; 8];
+    getrandom::getrandom(&mut buf).expect("Failed to generate random seed");
+    format!(
+        "{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
+        buf[0], buf[1], buf[2], buf[3], buf[4], buf[5]
+    )
 }
 
 pub fn install(config: &mut Config) {
-    println!("clawdshell --install");
-    println!("=====================\n");
+    let width = crossterm::terminal::size().map(|(w, _)| w).unwrap_or(80);
+
+    // --- Companion selection ---
+    if config.companion.seed.is_none() {
+        config.companion.seed = Some(generate_seed());
+    }
+
+    loop {
+        let c = companion::generate(config.companion.seed.as_deref().unwrap());
+
+        // Clear and show banner with companion
+        print!("\x1b[2J\x1b[H");
+        print!("{}", greeting::render_greeting("", "", &c, width));
+        println!(
+            "  Meet {}{}{}, your companion!\n",
+            BOLD, c.name, RESET
+        );
+
+        let reroll = Select::new()
+            .items(&["Keep this companion", "Reroll companion"])
+            .default(0)
+            .interact()
+            .unwrap_or(0);
+
+        if reroll == 1 {
+            config.companion.seed = Some(generate_seed());
+            continue;
+        }
+        break;
+    }
+
+    // --- Setup ---
+    print!("\x1b[2J\x1b[H");
+    let c = companion::generate(config.companion.seed.as_deref().unwrap());
+    print!("{}", greeting::render_greeting("", "", &c, width));
+
+    println!(
+        "{}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{}",
+        DIM, RESET
+    );
+    println!("  {}{}Setup{}\n", BOLD, CYAN, RESET);
 
     let current_exe = std::env::current_exe().expect("Failed to get executable path");
-    let exe_path = current_exe.to_string_lossy();
+    let exe_path = current_exe.to_string_lossy().to_string();
 
     // Detect current shell
     let current_shell = detect::detect_fallback_shell();
-    println!("Detected current shell: {}", current_shell);
+    println!("  {}Detected shell:{} {}", DIM, RESET, current_shell);
     config.defaults.fallback_shell = Some(current_shell.clone());
 
-    // Detect available tools
+    // Inherit shell environment for tool detection
+    detect::inherit_shell_environment(&current_shell);
+
+    // Detect available tools and let user pick
     let tools = detect::detect_available_tools();
-    if !tools.is_empty() {
-        println!("Found AI tools: {}", tools.join(", "));
-        if !tools.contains(&config.defaults.tool.as_str()) && !tools.is_empty() {
-            config.defaults.tool = tools[0].to_string();
-            println!("Set default tool to: {}", config.defaults.tool);
-        }
+    if tools.is_empty() {
+        println!(
+            "  {}No AI tools found in PATH. Default: claude{}",
+            DIM, RESET
+        );
     } else {
-        println!("No AI tools found in PATH. Default: claude");
+        println!(
+            "  {}Found:{} {}\n",
+            DIM,
+            RESET,
+            tools
+                .iter()
+                .map(|t| format!("{}{}{}", GREEN, t, RESET))
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+
+        let default_idx = tools
+            .iter()
+            .position(|&t| t == config.defaults.tool.as_str())
+            .unwrap_or(0);
+
+        let choice = Select::new()
+            .with_prompt("  Which tool should launch when you open a terminal?")
+            .items(&tools)
+            .default(default_idx)
+            .interact()
+            .unwrap_or(default_idx);
+
+        config.defaults.tool = tools[choice].to_string();
+        println!(
+            "\n  {}Default tool:{} {}{}{}\n",
+            DIM, RESET, GREEN, config.defaults.tool, RESET
+        );
     }
 
     // Save config
     let config_path = Config::default_path();
     if let Err(e) = config.save_to(&config_path) {
-        eprintln!("Failed to save config: {}", e);
+        eprintln!("  {}{}Failed to save config: {}{}", YELLOW, BOLD, e, RESET);
         return;
     }
-    println!("Config saved to: {}\n", config_path.display());
+    println!(
+        "  {}Config saved:{} {}\n",
+        DIM,
+        RESET,
+        config_path.display()
+    );
+
+    // --- Shell Registration ---
+    println!(
+        "{}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{}",
+        DIM, RESET
+    );
+    println!("  {}{}Shell Registration{}\n", BOLD, CYAN, RESET);
 
     #[cfg(unix)]
     unix_install(&exe_path);
@@ -49,25 +139,49 @@ pub fn install(config: &mut Config) {
     #[cfg(windows)]
     windows_install(&exe_path);
 
-    println!("\nInstallation complete! Open a new terminal to start using clawdshell.");
+    println!(
+        "\n{}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{}",
+        DIM, RESET
+    );
+    println!(
+        "  {}{}Done!{} Open a new terminal to start using clawdshell.\n",
+        BOLD, GREEN, RESET
+    );
 }
 
 pub fn uninstall(config: &Config) {
-    println!("clawdshell --uninstall");
-    println!("========================\n");
+    println!("\n  {}{}CLAWDSHELL{} — Uninstall", BOLD, CYAN, RESET);
+    println!(
+        "{}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{}\n",
+        DIM, RESET
+    );
 
     let current_exe = std::env::current_exe().expect("Failed to get executable path");
-    let exe_path = current_exe.to_string_lossy();
+    let exe_path = current_exe.to_string_lossy().to_string();
 
-    let fallback = config.defaults.fallback_shell.as_deref().unwrap_or("/bin/sh");
+    let fallback = config
+        .defaults
+        .fallback_shell
+        .as_deref()
+        .unwrap_or("/bin/sh");
 
-    println!("This will:");
-    println!("  1. Restore your shell to: {}", fallback);
+    println!("  This will:");
+    println!(
+        "    1. Restore your shell to: {}{}{}",
+        GREEN, fallback, RESET
+    );
     #[cfg(unix)]
-    println!("  2. Remove clawdshell from /etc/shells");
+    println!("    2. Remove clawdshell from /etc/shells");
+    println!();
 
-    if !prompt_confirm("\nProceed?") {
-        println!("Aborted.");
+    let proceed = Confirm::new()
+        .with_prompt("  Proceed?")
+        .default(false)
+        .interact()
+        .unwrap_or(false);
+
+    if !proceed {
+        println!("  Aborted.");
         return;
     }
 
@@ -77,19 +191,39 @@ pub fn uninstall(config: &Config) {
     #[cfg(windows)]
     windows_uninstall();
 
-    println!("\nUninstall complete. Config preserved at: {}", Config::default_path().display());
+    println!(
+        "\n  {}{}Done!{} Config preserved at: {}\n",
+        BOLD,
+        GREEN,
+        RESET,
+        Config::default_path().display()
+    );
 }
 
 #[cfg(unix)]
 fn unix_install(exe_path: &str) {
-    println!("This will:");
-    println!("  1. Add {} to /etc/shells (requires sudo)", exe_path);
-    println!("  2. Set it as your login shell via chsh");
+    println!("  This will:");
+    println!(
+        "    1. Add clawdshell to {}/etc/shells{} (requires sudo)",
+        DIM, RESET
+    );
+    println!(
+        "    2. Set it as your login shell via {}chsh{}\n",
+        DIM, RESET
+    );
 
-    if !prompt_confirm("\nProceed?") {
-        println!("Aborted.");
+    let proceed = Confirm::new()
+        .with_prompt("  Proceed?")
+        .default(true)
+        .interact()
+        .unwrap_or(false);
+
+    if !proceed {
+        println!("  Aborted.");
         return;
     }
+
+    println!();
 
     // Add to /etc/shells
     let shells_content = std::fs::read_to_string("/etc/shells").unwrap_or_default();
@@ -98,58 +232,92 @@ fn unix_install(exe_path: &str) {
             .args(["sh", "-c", &format!("echo '{}' >> /etc/shells", exe_path)])
             .status();
         match status {
-            Ok(s) if s.success() => println!("Added to /etc/shells"),
-            _ => { eprintln!("Failed to add to /etc/shells"); return; }
+            Ok(s) if s.success() => println!("  {}✓{} Added to /etc/shells", GREEN, RESET),
+            _ => {
+                eprintln!("  {}✗{} Failed to add to /etc/shells", YELLOW, RESET);
+                return;
+            }
         }
     } else {
-        println!("Already in /etc/shells");
+        println!("  {}✓{} Already in /etc/shells", GREEN, RESET);
     }
 
     // Run chsh
     match Command::new("chsh").args(["-s", exe_path]).status() {
-        Ok(s) if s.success() => println!("Login shell changed to clawdshell"),
-        _ => eprintln!("Failed to run chsh. Try: chsh -s {}", exe_path),
+        Ok(s) if s.success() => {
+            println!("  {}✓{} Login shell changed to clawdshell", GREEN, RESET)
+        }
+        _ => eprintln!(
+            "  {}✗{} Failed to run chsh. Try: chsh -s {}",
+            YELLOW, RESET, exe_path
+        ),
     }
 }
 
 #[cfg(unix)]
 fn unix_uninstall(exe_path: &str, fallback: &str) {
     match Command::new("chsh").args(["-s", fallback]).status() {
-        Ok(s) if s.success() => println!("Shell restored to: {}", fallback),
-        _ => eprintln!("Failed. Run manually: chsh -s {}", fallback),
+        Ok(s) if s.success() => println!("  {}✓{} Shell restored to: {}", GREEN, RESET, fallback),
+        _ => eprintln!(
+            "  {}✗{} Failed. Run manually: chsh -s {}",
+            YELLOW, RESET, fallback
+        ),
     }
 
     let _ = Command::new("sudo")
-        .args(["sed", "-i", "", &format!("\\|{}|d", exe_path), "/etc/shells"])
+        .args([
+            "sed",
+            "-i",
+            "",
+            &format!("\\|{}|d", exe_path),
+            "/etc/shells",
+        ])
         .status();
 }
 
 #[cfg(windows)]
 fn windows_install(exe_path: &str) {
-    println!("Windows Terminal setup:");
+    println!("  Windows Terminal setup:");
     if let Some(settings_path) = find_windows_terminal_settings() {
-        println!("Found: {}", settings_path.display());
-        if prompt_confirm("Add clawdshell profile?") {
-            println!("Profile addition not yet implemented. Add manually:");
+        println!("  Found: {}", settings_path.display());
+        let add = Confirm::new()
+            .with_prompt("  Add clawdshell profile?")
+            .default(true)
+            .interact()
+            .unwrap_or(false);
+        if add {
+            println!("  Profile addition not yet implemented. Add manually:");
         }
     } else {
-        println!("Windows Terminal not found.");
+        println!("  Windows Terminal not found.");
     }
-    println!("Manual setup: Add {} as a profile in your terminal.", exe_path);
+    println!(
+        "  Manual setup: Add {} as a profile in your terminal.",
+        exe_path
+    );
 }
 
 #[cfg(windows)]
 fn windows_uninstall() {
-    println!("Remove the clawdshell profile from Windows Terminal manually.");
+    println!("  Remove the clawdshell profile from Windows Terminal manually.");
 }
 
 #[cfg(windows)]
 fn find_windows_terminal_settings() -> Option<std::path::PathBuf> {
     let local = std::env::var("LOCALAPPDATA").ok()?;
     let paths = [
-        format!("{}/Packages/Microsoft.WindowsTerminal_8wekyb3d8bbwe/LocalState/settings.json", local),
-        format!("{}/Packages/Microsoft.WindowsTerminalPreview_8wekyb3d8bbwe/LocalState/settings.json", local),
+        format!(
+            "{}/Packages/Microsoft.WindowsTerminal_8wekyb3d8bbwe/LocalState/settings.json",
+            local
+        ),
+        format!(
+            "{}/Packages/Microsoft.WindowsTerminalPreview_8wekyb3d8bbwe/LocalState/settings.json",
+            local
+        ),
         format!("{}/Microsoft/Windows Terminal/settings.json", local),
     ];
-    paths.iter().map(std::path::PathBuf::from).find(|p| p.exists())
+    paths
+        .iter()
+        .map(std::path::PathBuf::from)
+        .find(|p| p.exists())
 }

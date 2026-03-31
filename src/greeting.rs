@@ -37,14 +37,21 @@ pub fn render_greeting(
             let logo = if i < LOGO.len() { LOGO[i] } else { "" };
             out.push_str(&format!("{}  {}{}{}\n", sprite, BOLD, logo, RESET));
         }
-        out.push_str(&format!(
-            "{}              v{} · launching {} · {}{}\n",
-            DIM, version, tool_name, TAGLINE, RESET
-        ));
-        out.push_str(&format!(
-            "{}              Ctrl+D to drop to {}{}\n\n",
-            DIM, fallback_shell, RESET
-        ));
+        if !tool_name.is_empty() {
+            out.push_str(&format!(
+                "{}              v{} · launching {} · {}{}\n",
+                DIM, version, tool_name, TAGLINE, RESET
+            ));
+            out.push_str(&format!(
+                "{}              Ctrl+D to drop to {}{}\n\n",
+                DIM, fallback_shell, RESET
+            ));
+        } else {
+            out.push_str(&format!(
+                "{}              v{} · {}{}\n\n",
+                DIM, version, TAGLINE, RESET
+            ));
+        }
     } else if terminal_width >= 60 {
         // Medium mode: just logo, no sprite
         out.push('\n');
