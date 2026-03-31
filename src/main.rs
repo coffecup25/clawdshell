@@ -110,7 +110,7 @@ fn main() {
     let tool_path = clawdshell::detect::resolve_tool_binary(&tool_name, command_override);
 
     // Print tagline — stays visible above the tool's UI
-    println!("\x1b[2mLets be real, you weren't using the terminal anyway\x1b[0m");
+    println!("\x1b[38;2;217;119;87mLets be real, you weren't using the terminal anyway\x1b[0m\n");
 
     clawdshell::shell::setup_signal_forwarding();
 

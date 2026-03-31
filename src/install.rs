@@ -341,22 +341,29 @@ fn render_egg_frame(frame: &mut ratatui::Frame, area: Rect, egg_idx: usize) {
     let egg_height = egg.len() as u16;
     let total_height = egg_height + 2; // egg + blank + label
 
-    // Center vertically
+    // Center vertically and horizontally
     let y_start = area.height.saturating_sub(total_height) / 2;
+    let egg_width = 12u16; // egg sprites are ~12 chars
+    let label = "An egg appeared...";
+    let max_content_width = egg_width.max(label.len() as u16);
+    let x_start = area.width.saturating_sub(max_content_width) / 2;
 
-    // Build lines
+    // Build lines — centered
     let mut lines: Vec<Line> = Vec::new();
     for row in egg {
-        lines.push(Line::from(Span::raw(format!("  {}", row))));
+        let row_str: &str = row;
+        let pad = (max_content_width as usize).saturating_sub(row_str.trim_end().len()) / 2;
+        lines.push(Line::from(Span::raw(format!("{}{}", " ".repeat(pad), row_str))));
     }
     lines.push(Line::from(""));
+    let label_pad = (max_content_width as usize).saturating_sub(label.len()) / 2;
     lines.push(Line::from(Span::styled(
-        "  An egg appeared...",
+        format!("{}{}", " ".repeat(label_pad), label),
         Style::default().add_modifier(Modifier::DIM),
     )));
 
     let paragraph = Paragraph::new(lines);
-    let egg_area = Rect::new(area.x, area.y + y_start, area.width, total_height);
+    let egg_area = Rect::new(x_start.min(area.x + area.width - 1), area.y + y_start, area.width.saturating_sub(x_start), total_height);
     frame.render_widget(paragraph, egg_area);
 }
 
