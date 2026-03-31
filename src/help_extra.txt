@@ -1,0 +1,54 @@
+USAGE:
+    clawdshell [OPTIONS] [-- <TOOL_ARGS>...]
+
+OPTIONS:
+    --install              Register clawdshell as your login shell
+    --uninstall            Restore your previous login shell
+    --set-tool <NAME>      Set the default tool (e.g., claude, codex, gemini)
+    --companion            Show your companion's stats card
+    --version              Print version
+    --help                 Print this help
+
+SHELL COMPATIBILITY:
+    -c <COMMAND>           Execute command via fallback shell (for scp/rsync/ssh)
+    -l                     Login shell flag (default behavior, no-op)
+
+PASSTHROUGH:
+    clawdshell -- <ARGS>   Pass arguments directly to the active tool
+
+CONFIG:
+    ~/.config/clawdshell/config.toml
+
+    [defaults]
+    tool = "claude"            # Which tool to launch
+    fallback_shell = "/bin/zsh"  # Shell to drop to after tool exits
+
+    [companion]
+    enabled = true             # Show companion on startup/transitions/errors
+    seed = "a7f2b3"           # Auto-generated, determines your companion
+
+    [tools.claude]
+    command = "claude"         # Binary name or path (defaults to tool name)
+    args = ["--model", "opus"] # Default arguments for this tool
+
+    [tools.codex]
+    args = ["--full-auto"]
+
+SUPPORTED TOOLS:
+    claude     Claude Code (https://claude.ai/code)
+    codex      OpenAI Codex CLI
+    gemini     Google Gemini CLI
+    opencode   OpenCode
+    aider      Aider
+    forge      ForgeCode
+
+    Any binary can be used by adding a [tools.<name>] section.
+
+ENVIRONMENT:
+    CLAWDSHELL_CONFIG    Override config file path
+    CLAWDSHELL_DEBUG=1   Print diagnostic info to stderr
+
+EXAMPLES:
+    clawdshell --install                # Set up as login shell
+    clawdshell --set-tool codex         # Switch to Codex
+    clawdshell -- --resume              # Launch with --resume passed to tool
