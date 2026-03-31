@@ -73,10 +73,29 @@ main() {
         codesign --force --sign - "$DEST" 2>/dev/null || true
     fi
 
-    # Ensure ~/.local/bin is in PATH
+    # Ensure ~/.local/bin is in PATH for this session
     case ":$PATH:" in
         *":$HOME/.local/bin:"*) ;;
         *) export PATH="$HOME/.local/bin:$PATH" ;;
+    esac
+
+    # Persist PATH in shell profile if not already there
+    add_to_path() {
+        local profile="$1"
+        if [ -f "$profile" ] && grep -q '\.local/bin' "$profile" 2>/dev/null; then
+            return
+        fi
+        if [ -f "$profile" ] || [ "$2" = "create" ]; then
+            printf '\n# Added by clawdshell\nexport PATH="$HOME/.local/bin:$PATH"\n' >> "$profile"
+        fi
+    }
+
+    SHELL_NAME=$(basename "${SHELL:-/bin/sh}")
+    case "$SHELL_NAME" in
+        zsh)  add_to_path "$HOME/.zshrc" ;;
+        bash) add_to_path "$HOME/.bashrc"; add_to_path "$HOME/.bash_profile" ;;
+        fish) mkdir -p "$HOME/.config/fish" && printf '\nset -gx PATH $HOME/.local/bin $PATH\n' >> "$HOME/.config/fish/config.fish" 2>/dev/null ;;
+        *)    add_to_path "$HOME/.profile" ;;
     esac
 
     printf "\r  ${ORANGE}✓${RESET} Downloaded to ${DIM}%s${RESET}          \n\n" "$DEST"
