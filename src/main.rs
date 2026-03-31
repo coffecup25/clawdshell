@@ -120,7 +120,9 @@ fn main() {
             std::thread::sleep(std::time::Duration::from_secs(2));
         }
         print!("{}", clawdshell::greeting::render_greeting(&tool_name, &shell, &companion, width));
-        // Clear screen so the tool gets a clean terminal
+        let _ = std::io::Write::flush(&mut std::io::stdout());
+        // Show greeting briefly so the user sees it, then clear for the tool
+        std::thread::sleep(std::time::Duration::from_millis(1500));
         print!("\x1b[2J\x1b[H");
         let _ = std::io::Write::flush(&mut std::io::stdout());
     }
