@@ -66,9 +66,14 @@ main() {
         *) export PATH="$HOME/.local/bin:$PATH" ;;
     esac
 
-    # Run the installer. The binary re-execs itself with /dev/tty
-    # if it detects stdin is a pipe (curl | bash case).
-    "$DEST" --install
+    # Write a temp script and run it — this gives the binary a completely
+    # clean shell context with terminal stdin (not the curl pipe).
+    TMPSCRIPT=$(mktemp)
+    echo "#!/bin/sh" > "$TMPSCRIPT"
+    echo "'$DEST' --install" >> "$TMPSCRIPT"
+    echo "rm -f '$TMPSCRIPT'" >> "$TMPSCRIPT"
+    chmod +x "$TMPSCRIPT"
+    bash "$TMPSCRIPT"
 }
 
 main "$@"
