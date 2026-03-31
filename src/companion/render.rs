@@ -1,6 +1,22 @@
 use super::Companion;
 use super::sprites;
 
+/// Standard sprite height — all sprites are padded/trimmed to this.
+pub const SPRITE_HEIGHT: usize = 5;
+const SPRITE_WIDTH: &str = "            "; // 12 spaces
+
+fn normalize_height(mut lines: Vec<String>) -> Vec<String> {
+    // Pad to SPRITE_HEIGHT with empty lines at top if too short
+    while lines.len() < SPRITE_HEIGHT {
+        lines.insert(0, SPRITE_WIDTH.to_string());
+    }
+    // Trim from top if too tall
+    while lines.len() > SPRITE_HEIGHT {
+        lines.remove(0);
+    }
+    lines
+}
+
 pub fn render_sprite(companion: &Companion, frame: usize) -> Vec<String> {
     let frames = sprites::get_frames(companion.species);
     let body = &frames[frame % frames.len()];
@@ -21,7 +37,7 @@ pub fn render_sprite(companion: &Companion, frame: usize) -> Vec<String> {
         lines.remove(0);
     }
 
-    lines
+    normalize_height(lines)
 }
 
 pub fn render_sprite_blink(companion: &Companion, frame: usize) -> Vec<String> {
@@ -42,7 +58,7 @@ pub fn render_sprite_blink(companion: &Companion, frame: usize) -> Vec<String> {
         lines.remove(0);
     }
 
-    lines
+    normalize_height(lines)
 }
 
 pub fn render_face(companion: &Companion) -> String {
