@@ -1,5 +1,8 @@
 pub mod sprites;
 pub mod names;
+pub mod render;
+pub mod animate;
+pub mod card;
 
 use std::collections::HashMap;
 
