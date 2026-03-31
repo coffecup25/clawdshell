@@ -7,6 +7,8 @@ const TAGLINE: &str = "you weren't using your terminal anyways";
 const BOLD: &str = "\x1b[1m";
 const DIM: &str = "\x1b[2m";
 const RESET: &str = "\x1b[0m";
+// Warm coral/orange accent color
+const NICE_ORANGE: &str = "\x1b[38;2;217;119;87m";
 
 // Each letter is 5 lines tall. Letters: C L A W D S H E L L
 // Using █ block characters for filled look.
@@ -156,7 +158,7 @@ pub fn animate_title(companion: &Companion) -> io::Result<()> {
             } else {
                 ""
             };
-            write!(stdout, " {}  {}{}{}", sprite, BOLD, logo, RESET)?;
+            write!(stdout, " {}  {}{}{}{}", sprite, BOLD, NICE_ORANGE, logo, RESET)?;
             execute!(stdout, terminal::Clear(terminal::ClearType::UntilNewLine))?;
             writeln!(stdout)?;
         }
@@ -191,7 +193,7 @@ pub fn animate_title_below() -> io::Result<()> {
         execute!(stdout, cursor::MoveUp(LETTER_HEIGHT as u16))?;
         for i in 0..LETTER_HEIGHT {
             execute!(stdout, cursor::MoveToColumn(0))?;
-            write!(stdout, "  {}{}{}", BOLD, logo_lines[i], RESET)?;
+            write!(stdout, "  {}{}{}{}", BOLD, NICE_ORANGE, logo_lines[i], RESET)?;
             execute!(stdout, terminal::Clear(terminal::ClearType::UntilNewLine))?;
             writeln!(stdout)?;
         }
@@ -228,7 +230,7 @@ pub fn render_greeting(
                 "            "
             };
             let logo = if i < LETTER_HEIGHT {
-                format!("{}  {}{}", BOLD, logo_lines[i], RESET)
+                format!("{}{}  {}{}", BOLD, NICE_ORANGE, logo_lines[i], RESET)
             } else {
                 String::new()
             };
