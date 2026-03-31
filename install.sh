@@ -6,7 +6,7 @@ set -e
 #
 # Environment variables:
 #   CLAWDSHELL_VERSION  - version to install (default: latest)
-#   CLAWDSHELL_REPO     - GitHub repo (default: RLabs-Inc/clawdshell)
+#   CLAWDSHELL_REPO     - GitHub repo (default: coffecup25/clawdshell)
 
 VERSION="${CLAWDSHELL_VERSION:-latest}"
 REPO="${CLAWDSHELL_REPO:-coffecup25/clawdshell}"
@@ -29,12 +29,6 @@ detect_platform() {
 }
 
 main() {
-    # Reopen stdin from terminal if piped (curl | sh).
-    # Safe here because main() is called at the end — all code is already parsed.
-    if [ ! -t 0 ]; then
-        exec </dev/tty
-    fi
-
     PLATFORM=$(detect_platform)
 
     INSTALL_DIR="$HOME/.local/bin"
@@ -76,8 +70,10 @@ main() {
         *) export PATH="$HOME/.local/bin:$PATH" ;;
     esac
 
-    # Hand off to the binary — TUI works because we reopened stdin above
-    "$DEST" --install
+    # Launch --install with full terminal access.
+    # All three fds must point to /dev/tty for ratatui TUI to work
+    # when this script was piped from curl.
+    "$DEST" --install </dev/tty >/dev/tty 2>/dev/tty
 }
 
 main "$@"
