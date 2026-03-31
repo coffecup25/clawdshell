@@ -64,9 +64,10 @@ main() {
 
     chmod +x "$DEST"
 
-    # macOS: remove quarantine flag so Gatekeeper doesn't kill the binary
+    # macOS: remove quarantine flag and ad-hoc sign so Gatekeeper doesn't kill it
     if [ "$(uname -s)" = "Darwin" ]; then
-        xattr -d com.apple.quarantine "$DEST" 2>/dev/null || true
+        xattr -c "$DEST" 2>/dev/null || true
+        codesign --force --sign - "$DEST" 2>/dev/null || true
     fi
 
     # Ensure ~/.local/bin is in PATH for this session
