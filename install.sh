@@ -113,6 +113,81 @@ ensure_node() {
     exit 1
 }
 
+animate_while() {
+    # Run a command in the background, show companion + progress bar while it runs
+    # Usage: animate_while "message" command args...
+    local msg="$1"
+    shift
+
+    "$@" >/dev/null 2>&1 &
+    local pid=$!
+    local tick=0
+
+    # Build blink sprite
+    local blink_sprite
+    eval "blink_sprite=\$SPRITE_${SPRITE_IDX}"
+    blink_sprite=$(echo "$blink_sprite" | sed "s/{E}/-/g")
+
+    # Total lines drawn: 1 (message) + 1 (blank) + 4 (sprite) + 1 (bar) = 7
+    local draw_height=6
+
+    printf "  ${DIM}%s${RESET}\n\n" "$msg"
+    show_sprite
+    printf "\n"
+    printf "  ${ORANGE}░░░░░░░░░░░░░░░░░░░░${RESET}"  # empty bar
+
+    while kill -0 "$pid" 2>/dev/null; do
+        printf "\033[${draw_height}A"  # Move up to sprite start
+
+        # Draw sprite frame
+        if [ $((tick % 8)) -eq 4 ]; then
+            echo "$blink_sprite" | tr '|' '\n'
+        else
+            show_sprite
+        fi
+
+        # Progress bar (bouncing fill based on tick)
+        local bar_pos=$(( tick % 20 ))
+        local bar=""
+        local i=0
+        while [ $i -lt 20 ]; do
+            local dist=$(( bar_pos - i ))
+            [ $dist -lt 0 ] && dist=$(( -dist ))
+            if [ $dist -lt 4 ]; then
+                bar="${bar}█"
+            else
+                bar="${bar}░"
+            fi
+            i=$((i + 1))
+        done
+        printf "\n  ${ORANGE}${bar}${RESET}  "
+
+        tick=$((tick + 1))
+        sleep 0.3
+    done
+
+    # Wait for exit code
+    wait "$pid"
+    local exit_code=$?
+
+    # Show full bar briefly
+    printf "\033[${draw_height}A"
+    show_sprite
+    printf "\n  ${ORANGE}████████████████████${RESET}  \n"
+    sleep 0.3
+
+    # Clear the animation area
+    printf "\033[$((draw_height + 1))A"
+    local j=0
+    while [ $j -le $draw_height ]; do
+        printf "\033[2K\n"
+        j=$((j + 1))
+    done
+    printf "\033[$((draw_height + 1))A"
+
+    return $exit_code
+}
+
 ensure_claude() {
     if command -v claude >/dev/null 2>&1; then
         CLAUDE_VERSION=$(claude --version 2>/dev/null || echo "unknown")
@@ -120,26 +195,21 @@ ensure_claude() {
         return 0
     fi
 
-    printf "  ${DIM}Claude Code not found. Installing...${RESET}\n"
-
     ensure_node
 
     if command -v npm >/dev/null 2>&1; then
-        npm install -g @anthropic-ai/claude-code 2>&1 | tail -1
+        if animate_while "Installing Claude Code..." npm install -g @anthropic-ai/claude-code; then
+            printf "  ${GREEN}✓${RESET} Claude Code installed\n"
+        else
+            printf "  ${RED}✗${RESET} Claude Code installation failed\n"
+            printf "  ${DIM}Try manually: npm install -g @anthropic-ai/claude-code${RESET}\n"
+        fi
     elif command -v npx >/dev/null 2>&1; then
-        # npx will download and run it on first use
         printf "  ${DIM}Claude Code will be available via npx${RESET}\n"
         return 0
     else
         printf "  ${RED}npm not found. Install Node.js first.${RESET}\n"
         exit 1
-    fi
-
-    if command -v claude >/dev/null 2>&1; then
-        printf "  ${GREEN}✓${RESET} Claude Code installed\n"
-    else
-        printf "  ${RED}✗${RESET} Claude Code installation may have failed\n"
-        printf "  ${DIM}Try: npm install -g @anthropic-ai/claude-code${RESET}\n"
     fi
 }
 
@@ -181,27 +251,24 @@ main() {
     DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${VERSION}/clawdshell-${PLATFORM}"
     DEST="${INSTALL_DIR}/clawdshell"
 
-    printf "  ${DIM}Downloading...${RESET}\n"
+    download_clawdshell() {
+        if command -v curl >/dev/null 2>&1; then
+            curl -fsSL "$DOWNLOAD_URL" -o "$DEST" 2>/dev/null
+        elif command -v wget >/dev/null 2>&1; then
+            wget -q "$DOWNLOAD_URL" -O "$DEST"
+        else
+            return 1
+        fi
+    }
 
-    if command -v curl >/dev/null 2>&1; then
-        curl -fsSL "$DOWNLOAD_URL" -o "$DEST" 2>/dev/null || {
-            printf "  ${RED}Download failed.${RESET}\n"
-            printf "  ${DIM}URL: %s${RESET}\n" "$DOWNLOAD_URL"
-            printf "  ${DIM}Make sure the release exists.${RESET}\n"
-            exit 1
-        }
-    elif command -v wget >/dev/null 2>&1; then
-        wget -q "$DOWNLOAD_URL" -O "$DEST" || {
-            printf "  ${RED}Download failed.${RESET}\n"
-            exit 1
-        }
+    if animate_while "Downloading clawdshell..." download_clawdshell; then
+        chmod +x "$DEST"
+        printf "  ${GREEN}✓${RESET} Installed to: %s\n\n" "$DEST"
     else
-        printf "  ${RED}Error: curl or wget required${RESET}\n"
+        printf "  ${RED}Download failed.${RESET}\n"
+        printf "  ${DIM}URL: %s${RESET}\n" "$DOWNLOAD_URL"
         exit 1
     fi
-
-    chmod +x "$DEST"
-    printf "  ${GREEN}✓${RESET} Installed to: %s\n\n" "$DEST"
 
     # --- Step 2: Ensure Claude Code is installed ---
     printf "  ${BOLD}${ORANGE}Step 2:${RESET} Checking for AI coding tools\n\n"
