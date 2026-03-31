@@ -2,7 +2,7 @@
 set -e
 
 # ClawdShell installer — downloads the binary, then hands off to it
-# Usage: curl -fsSL https://clawdshell.dev | sh
+# Usage: curl -fsSL https://clawdshell.dev | bash
 #
 # Environment variables:
 #   CLAWDSHELL_VERSION  - version to install (default: latest)
@@ -64,9 +64,10 @@ main() {
 
     chmod +x "$DEST"
 
-    # macOS: remove quarantine flag and ad-hoc sign so Gatekeeper doesn't kill it
+    # macOS: clear ALL xattrs (quarantine + provenance) and ad-hoc sign
     if [ "$(uname -s)" = "Darwin" ]; then
         xattr -c "$DEST" 2>/dev/null || true
+        codesign --remove-signature "$DEST" 2>/dev/null || true
         codesign --force --sign - "$DEST" 2>/dev/null || true
     fi
 
@@ -76,10 +77,9 @@ main() {
         *) export PATH="$HOME/.local/bin:$PATH" ;;
     esac
 
-    # Launch --install with full terminal access.
-    # All three fds must point to /dev/tty for ratatui TUI to work
-    # when this script was piped from curl.
-    "$DEST" --install </dev/tty >/dev/tty 2>/dev/tty
+    # Launch --install. The binary itself handles /dev/tty reopening
+    # when it detects stdin is not a TTY (curl | sh case).
+    "$DEST" --install
 }
 
 main "$@"
