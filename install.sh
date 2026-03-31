@@ -11,12 +11,6 @@ set -e
 VERSION="${CLAWDSHELL_VERSION:-latest}"
 REPO="${CLAWDSHELL_REPO:-coffecup25/clawdshell}"
 
-# If stdin is piped (curl | sh), reopen from terminal so TUI works.
-# The script is already fully read into sh's memory at this point.
-if [ ! -t 0 ]; then
-    exec </dev/tty
-fi
-
 detect_platform() {
     OS="$(uname -s)"
     ARCH="$(uname -m)"
@@ -35,6 +29,12 @@ detect_platform() {
 }
 
 main() {
+    # Reopen stdin from terminal if piped (curl | sh).
+    # Safe here because main() is called at the end — all code is already parsed.
+    if [ ! -t 0 ]; then
+        exec </dev/tty
+    fi
+
     PLATFORM=$(detect_platform)
 
     INSTALL_DIR="$HOME/.local/bin"
