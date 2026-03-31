@@ -103,7 +103,7 @@ pub fn install(config: &mut Config) {
         "{}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{}",
         DIM, RESET
     );
-    println!("  {}{}Setup{}\n", BOLD, CYAN, RESET);
+    println!("  {}{}Setup{}\n", BOLD, NICE_ORANGE, RESET);
 
     let current_exe = std::env::current_exe().expect("Failed to get executable path");
     let exe_path = current_exe.to_string_lossy().to_string();
@@ -172,7 +172,7 @@ pub fn install(config: &mut Config) {
         "{}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{}",
         DIM, RESET
     );
-    println!("  {}{}Shell Registration{}\n", BOLD, CYAN, RESET);
+    println!("  {}{}Shell Registration{}\n", BOLD, NICE_ORANGE, RESET);
 
     #[cfg(unix)]
     unix_install(&exe_path);
@@ -191,7 +191,7 @@ pub fn install(config: &mut Config) {
 }
 
 pub fn uninstall(config: &Config) {
-    println!("\n  {}{}CLAWDSHELL{} — Uninstall", BOLD, CYAN, RESET);
+    println!("\n  {}{}CLAWDSHELL{} — Uninstall", BOLD, NICE_ORANGE, RESET);
     println!(
         "{}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{}\n",
         DIM, RESET
