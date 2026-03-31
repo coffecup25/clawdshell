@@ -378,14 +378,23 @@ fn render_companion_with_title(
     let sprite_height = sprite_lines.len();
     let row_count = sprite_height.max(logo_height);
 
-    // Calculate where the companion should be horizontally
-    // When title_chars=0, companion is centered. As letters reveal, it slides left.
-    let sprite_width = 14u16;
-    let logo_total_width = 83u16; // ~8 chars × 10 letters + W is wider
-    let final_x = 1u16; // final resting position (left side)
-    let center_x = area.width.saturating_sub(sprite_width) / 2;
+    // Measure actual display width of the full logo
+    let logo_display_w = greeting::logo_display_width() as u16;
+    let sprite_display_w = 14u16;
+    let gap = 2u16;
+    let total_content_w = sprite_display_w + gap + logo_display_w;
 
-    // Interpolate x position: center → left as title_chars goes 0 → 10
+    // If the logo + sprite is wider than terminal, just left-align everything
+    let final_x = if total_content_w >= area.width {
+        0u16
+    } else {
+        // Center the whole thing, but at minimum x=1
+        ((area.width.saturating_sub(total_content_w)) / 2).max(1)
+    };
+
+    let center_x = area.width.saturating_sub(sprite_display_w) / 2;
+
+    // Interpolate x position: center → final as title_chars goes 0 → 10
     let progress = (title_chars as f32 / 10.0).min(1.0);
     let x_pos = center_x as f32 - (center_x as f32 - final_x as f32) * progress;
     let x_pos = x_pos.max(0.0) as u16;
@@ -403,6 +412,11 @@ fn render_companion_with_title(
 
     // Companion sprite side-by-side with logo
     let pad = " ".repeat(x_pos as usize);
+    let available_for_logo = (area.width as usize)
+        .saturating_sub(x_pos as usize)
+        .saturating_sub(sprite_display_w as usize)
+        .saturating_sub(gap as usize);
+
     for i in 0..row_count {
         let sprite_part = if i < sprite_height {
             &sprite_lines[i]
@@ -410,15 +424,22 @@ fn render_companion_with_title(
             "            "
         };
         let logo_part = if i < logo_height {
-            &logo_lines[i]
+            // Truncate logo if it would overflow
+            let full = &logo_lines[i];
+            if full.chars().count() > available_for_logo {
+                let truncated: String = full.chars().take(available_for_logo).collect();
+                truncated
+            } else {
+                full.to_string()
+            }
         } else {
-            ""
+            String::new()
         };
 
         let spans = vec![
             Span::raw(format!("{}{}  ", pad, sprite_part)),
             Span::styled(
-                logo_part.to_string(),
+                logo_part,
                 Style::default()
                     .fg(NICE_ORANGE)
                     .add_modifier(Modifier::BOLD),
