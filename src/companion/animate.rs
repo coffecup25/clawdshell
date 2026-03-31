@@ -177,18 +177,7 @@ pub fn play_hatch(companion: &Companion) -> io::Result<()> {
     }
     execute!(stdout, cursor::MoveUp(EGG_BLOCK_HEIGHT))?;
 
-    // Draw companion with sparkles
-    for line in &sprite_lines {
-        execute!(stdout, cursor::MoveToColumn(0))?;
-        write!(stdout, "  ✨ {}", line)?;
-        execute!(stdout, terminal::Clear(terminal::ClearType::UntilNewLine))?;
-        writeln!(stdout)?;
-    }
-    stdout.flush()?;
-    thread::sleep(Duration::from_millis(500));
-
-    // Redraw without sparkles
-    execute!(stdout, cursor::MoveUp(sprite_lines.len() as u16))?;
+    // Draw companion (no sparkles, no idle — go straight to title)
     for line in &sprite_lines {
         execute!(stdout, cursor::MoveToColumn(0))?;
         write!(stdout, "     {}", line)?;
@@ -196,28 +185,6 @@ pub fn play_hatch(companion: &Companion) -> io::Result<()> {
         writeln!(stdout)?;
     }
     stdout.flush()?;
-
-    // Quick idle animation (3 ticks — fast)
-    for tick in 0..3 {
-        let seq_idx = tick % IDLE_SEQUENCE.len();
-        let frame_code = IDLE_SEQUENCE[seq_idx];
-
-        let lines = if frame_code == -1 {
-            render::render_sprite_blink(companion, 0)
-        } else {
-            render::render_sprite(companion, frame_code as usize)
-        };
-
-        execute!(stdout, cursor::MoveUp(lines.len() as u16))?;
-        for line in &lines {
-            execute!(stdout, cursor::MoveToColumn(0))?;
-            write!(stdout, "     {}", line)?;
-            execute!(stdout, terminal::Clear(terminal::ClearType::UntilNewLine))?;
-            writeln!(stdout)?;
-        }
-        stdout.flush()?;
-        thread::sleep(Duration::from_millis(TICK_MS));
-    }
 
     // Cursor is now right below the companion — ready for title animation
     Ok(())

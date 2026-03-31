@@ -134,33 +134,15 @@ pub fn animate_title(companion: &Companion) -> io::Result<()> {
 
     let total_height = sprite_lines.len().max(LETTER_HEIGHT);
 
-    // Draw companion + empty space first
-    let empty_logo = build_partial_logo(0);
+    // Draw companion + first letter immediately (no empty pause)
     println!();
-    for i in 0..total_height {
-        let sprite = if i < sprite_lines.len() {
-            &sprite_lines[i]
-        } else {
-            "            "
-        };
-        let logo = if i < LETTER_HEIGHT {
-            &empty_logo[i]
-        } else {
-            ""
-        };
-        writeln!(stdout, " {}  {}{}{}", sprite, BOLD, logo, RESET)?;
-    }
-    stdout.flush()?;
-
-    std::thread::sleep(std::time::Duration::from_millis(300));
-
-    // Animate letters appearing one by one
     let word_len = "CLAWDSHELL".len();
     for n in 1..=word_len {
         let logo_lines = build_partial_logo(n);
 
-        // Move cursor up to redraw
-        execute!(stdout, cursor::MoveUp(total_height as u16))?;
+        if n > 1 {
+            execute!(stdout, cursor::MoveUp(total_height as u16))?;
+        }
 
         for i in 0..total_height {
             execute!(stdout, cursor::MoveToColumn(0))?;
@@ -180,7 +162,7 @@ pub fn animate_title(companion: &Companion) -> io::Result<()> {
         }
         stdout.flush()?;
 
-        let delay = if n <= 3 { 100 } else if n <= 7 { 70 } else { 50 };
+        let delay = if n <= 3 { 60 } else if n <= 7 { 40 } else { 25 };
         std::thread::sleep(std::time::Duration::from_millis(delay));
     }
 
