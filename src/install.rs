@@ -492,9 +492,13 @@ fn render_companion_with_title(
     }
 
     if show_hatched {
-        // Tagline
+        // Tagline — centered under the title area
+        let tagline = "Lets be real, you weren't using the terminal anyway";
+        let tagline_pad = (sprite_display_w as usize + gap as usize + logo_display_w as usize)
+            .saturating_sub(tagline.len()) / 2
+            + x_pos as usize;
         lines.push(Line::from(Span::styled(
-            "  you weren't using your terminal anyways",
+            format!("{}{}", " ".repeat(tagline_pad), tagline),
             Style::default().add_modifier(Modifier::DIM),
         )));
         lines.push(Line::from(""));
