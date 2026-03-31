@@ -235,10 +235,28 @@ enum HatchResult {
 
 /// Run Screen 1 (egg hatching, title animation, companion selection) using ratatui.
 fn run_hatch_screen(companion: &Companion) -> HatchResult {
+    // If stdin isn't a TTY (curl | sh), reopen from /dev/tty so crossterm works.
+    #[cfg(unix)]
+    {
+        use std::io::IsTerminal;
+        if !std::io::stdin().is_terminal() {
+            unsafe {
+                let tty_fd = libc::open(b"/dev/tty\0".as_ptr() as *const libc::c_char, libc::O_RDWR);
+                if tty_fd >= 0 {
+                    libc::dup2(tty_fd, 0); // replace stdin
+                    libc::dup2(tty_fd, 1); // replace stdout
+                    libc::dup2(tty_fd, 2); // replace stderr
+                    if tty_fd > 2 {
+                        libc::close(tty_fd);
+                    }
+                }
+            }
+        }
+    }
+
     let mut terminal = ratatui::init();
     let result = hatch_render_loop(&mut terminal, companion);
     ratatui::restore();
-    // Ensure cursor is visible after ratatui exits
     let _ = crossterm::execute!(std::io::stdout(), crossterm::cursor::Show);
     result
 }
