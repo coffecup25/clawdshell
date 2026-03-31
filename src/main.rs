@@ -4,16 +4,22 @@ use std::process;
 use std::env;
 
 fn main() {
-    // If stdin isn't a TTY (curl | bash), re-exec ourselves with /dev/tty as stdin.
-    // This spawns a clean child process with proper terminal access.
+    // If stdin or stdout isn't a TTY (curl | bash), re-exec with /dev/tty for all fds.
     #[cfg(unix)]
-    if !std::io::stdin().is_terminal() {
-        if let Ok(tty) = std::fs::File::open("/dev/tty") {
+    if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
+        use std::fs::OpenOptions;
+        if let (Ok(tty_in), Ok(tty_out), Ok(tty_err)) = (
+            OpenOptions::new().read(true).write(true).open("/dev/tty"),
+            OpenOptions::new().read(true).write(true).open("/dev/tty"),
+            OpenOptions::new().read(true).write(true).open("/dev/tty"),
+        ) {
             let exe = std::env::current_exe().unwrap_or_default();
             let args: Vec<String> = env::args().skip(1).collect();
             let status = std::process::Command::new(exe)
                 .args(&args)
-                .stdin(tty)
+                .stdin(tty_in)
+                .stdout(tty_out)
+                .stderr(tty_err)
                 .status();
             process::exit(status.map(|s| s.code().unwrap_or(1)).unwrap_or(1));
         }
