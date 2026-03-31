@@ -2,6 +2,7 @@ use crate::companion;
 use crate::config::Config;
 use crate::detect;
 use crate::greeting;
+use crossterm::{execute, terminal};
 use dialoguer::{Confirm, Select};
 use std::io::Write;
 use std::process::Command;
@@ -29,20 +30,20 @@ pub fn install(config: &mut Config) {
     // Always generate a fresh seed for install — this is the onboarding experience
     config.companion.seed = Some(generate_seed());
 
-    let mut play_hatch = true;
     loop {
         let c = companion::generate(config.companion.seed.as_deref().unwrap());
 
-        // Clear screen
-        print!("\x1b[2J\x1b[H");
-        let _ = std::io::stdout().flush();
+        // Enter alternate screen — nothing here touches scrollback
+        let _ = execute!(std::io::stdout(), terminal::EnterAlternateScreen);
 
         // Play egg hatching animation
+        print!("\x1b[H");
+        let _ = std::io::stdout().flush();
         println!();
         println!("  {}An egg appeared...{}\n", DIM, RESET);
         let _ = companion::animate::play_hatch(&c);
 
-        // Brief pause, then clear screen for the title reveal
+        // Brief pause, then clear for the title reveal
         std::thread::sleep(std::time::Duration::from_millis(500));
         print!("\x1b[2J\x1b[H");
         let _ = std::io::stdout().flush();
@@ -62,6 +63,9 @@ pub fn install(config: &mut Config) {
             .default(0)
             .interact()
             .unwrap_or(0);
+
+        // Leave alternate screen — back to normal scrollback
+        let _ = execute!(std::io::stdout(), terminal::LeaveAlternateScreen);
 
         if reroll == 1 {
             config.companion.seed = Some(generate_seed());

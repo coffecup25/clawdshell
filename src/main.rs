@@ -109,22 +109,25 @@ fn main() {
     let command_override = tool_config.and_then(|tc| tc.command.as_deref());
     let tool_path = clawdshell::detect::resolve_tool_binary(&tool_name, command_override);
 
-    // Show greeting
+    // Show greeting on alternate screen — doesn't pollute scrollback
     if config.companion.enabled {
         let width = terminal::size().map(|(w, _)| w).unwrap_or(80);
+        let _ = crossterm::execute!(std::io::stdout(), terminal::EnterAlternateScreen);
+
         if first_launch {
-            // First time: hatch the companion from an egg
             println!("\n  \x1b[2mAn egg appeared...\x1b[0m\n");
             let _ = clawdshell::companion::animate::play_hatch(&companion);
             println!("\n  \x1b[1m✨ \x1b[32m{}\x1b[0m hatched! ✨\x1b[0m\n", companion.name);
             std::thread::sleep(std::time::Duration::from_secs(2));
         }
-        print!("{}", clawdshell::greeting::render_greeting(&tool_name, &shell, &companion, width));
-        let _ = std::io::Write::flush(&mut std::io::stdout());
-        // Show greeting briefly so the user sees it, then clear for the tool
-        std::thread::sleep(std::time::Duration::from_millis(1500));
+
         print!("\x1b[2J\x1b[H");
         let _ = std::io::Write::flush(&mut std::io::stdout());
+        print!("{}", clawdshell::greeting::render_greeting(&tool_name, &shell, &companion, width));
+        let _ = std::io::Write::flush(&mut std::io::stdout());
+        std::thread::sleep(std::time::Duration::from_millis(1500));
+
+        let _ = crossterm::execute!(std::io::stdout(), terminal::LeaveAlternateScreen);
     }
 
     clawdshell::shell::setup_signal_forwarding();
