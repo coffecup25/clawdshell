@@ -187,6 +187,41 @@ pub fn animate_title(companion: &Companion) -> io::Result<()> {
     Ok(())
 }
 
+/// Animate the logo below the current cursor position (no companion — it's already above).
+/// Letters type in left-to-right.
+pub fn animate_title_below() -> io::Result<()> {
+    let mut stdout = io::stdout();
+
+    // Draw empty logo space
+    let empty_logo = build_partial_logo(0);
+    for i in 0..LETTER_HEIGHT {
+        writeln!(stdout, "  {}{}{}", BOLD, empty_logo[i], RESET)?;
+    }
+    stdout.flush()?;
+
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    // Type letters in one by one
+    let word_len = "CLAWDSHELL".len();
+    for n in 1..=word_len {
+        let logo_lines = build_partial_logo(n);
+
+        execute!(stdout, cursor::MoveUp(LETTER_HEIGHT as u16))?;
+        for i in 0..LETTER_HEIGHT {
+            execute!(stdout, cursor::MoveToColumn(0))?;
+            write!(stdout, "  {}{}{}", BOLD, logo_lines[i], RESET)?;
+            execute!(stdout, terminal::Clear(terminal::ClearType::UntilNewLine))?;
+            writeln!(stdout)?;
+        }
+        stdout.flush()?;
+
+        let delay = if n <= 3 { 80 } else if n <= 7 { 55 } else { 40 };
+        std::thread::sleep(std::time::Duration::from_millis(delay));
+    }
+
+    Ok(())
+}
+
 /// Render the static startup greeting (no animation).
 pub fn render_greeting(
     tool_name: &str,

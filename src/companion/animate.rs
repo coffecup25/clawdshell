@@ -40,9 +40,9 @@ pub fn play_idle(companion: &Companion, ticks: usize) -> io::Result<()> {
     Ok(())
 }
 
-/// Egg hatching animation frames.
+// Egg frames
 const EGG_FRAMES: &[&[&str]] = &[
-    // Frame 0: intact egg
+    // 0: intact
     &[
         "            ",
         "    .---.   ",
@@ -51,7 +51,7 @@ const EGG_FRAMES: &[&[&str]] = &[
         "  |       | ",
         "   \\_____/  ",
     ],
-    // Frame 1: wobble left
+    // 1: wobble left
     &[
         "            ",
         "   .---.    ",
@@ -60,7 +60,7 @@ const EGG_FRAMES: &[&[&str]] = &[
         " |       |  ",
         "  \\_____/   ",
     ],
-    // Frame 2: wobble right
+    // 2: wobble right
     &[
         "            ",
         "     .---.  ",
@@ -69,7 +69,7 @@ const EGG_FRAMES: &[&[&str]] = &[
         "   |       |",
         "    \\_____/ ",
     ],
-    // Frame 3: crack appears
+    // 3: crack
     &[
         "            ",
         "    .---.   ",
@@ -78,7 +78,7 @@ const EGG_FRAMES: &[&[&str]] = &[
         "  |       | ",
         "   \\_____/  ",
     ],
-    // Frame 4: more cracks
+    // 4: more cracks
     &[
         "            ",
         "    .-⚡-.   ",
@@ -87,7 +87,7 @@ const EGG_FRAMES: &[&[&str]] = &[
         "  |       | ",
         "   \\_____/  ",
     ],
-    // Frame 5: breaking open
+    // 5: breaking
     &[
         "     \\*/    ",
         "    .-.-.   ",
@@ -96,7 +96,7 @@ const EGG_FRAMES: &[&[&str]] = &[
         "  |  * *  | ",
         "   \\_____/  ",
     ],
-    // Frame 6: top coming off
+    // 6: top off
     &[
         "    ~   ~   ",
         "      *     ",
@@ -105,7 +105,7 @@ const EGG_FRAMES: &[&[&str]] = &[
         "  |   *   | ",
         "   \\_____/  ",
     ],
-    // Frame 7: hatched - shell pieces
+    // 7: shell pieces
     &[
         "    *   *   ",
         "            ",
@@ -116,57 +116,68 @@ const EGG_FRAMES: &[&[&str]] = &[
     ],
 ];
 
+const DIM: &str = "\x1b[2m";
+const RESET: &str = "\x1b[0m";
+
+/// Egg height including the label line below
+const EGG_BLOCK_HEIGHT: u16 = 7; // 6 egg lines + 1 label line
+
 /// Play the egg hatching animation, then reveal the companion.
+/// "An egg appeared..." is shown below the egg.
+/// After hatching, the companion remains and cursor is below it — ready for more content.
 pub fn play_hatch(companion: &Companion) -> io::Result<()> {
     let mut stdout = io::stdout();
 
-    // Phase 1: Egg animation
-    let egg_timing = [
-        800, // intact
-        300, // wobble left
-        300, // wobble right
-        300, // wobble left
-        300, // wobble right
-        600, // crack
-        600, // more cracks
-        400, // breaking
-        400, // top off
-        300, // shell pieces
-    ];
-
     let egg_sequence = [0, 1, 2, 1, 2, 3, 4, 5, 6, 7];
+    let egg_timing = [800, 300, 300, 300, 300, 600, 600, 400, 400, 300];
 
-    for (i, &frame_idx) in egg_sequence.iter().enumerate() {
+    // Draw first egg frame + label below
+    let first_frame = EGG_FRAMES[0];
+    for line in first_frame {
+        execute!(stdout, cursor::MoveToColumn(0))?;
+        write!(stdout, "  {}", line)?;
+        execute!(stdout, terminal::Clear(terminal::ClearType::UntilNewLine))?;
+        writeln!(stdout)?;
+    }
+    writeln!(stdout, "  {}An egg appeared...{}", DIM, RESET)?;
+    stdout.flush()?;
+    thread::sleep(Duration::from_millis(egg_timing[0]));
+
+    // Animate remaining egg frames (rewrite egg area, keep label)
+    for (i, &frame_idx) in egg_sequence[1..].iter().enumerate() {
         let frame = EGG_FRAMES[frame_idx];
-        if i > 0 {
-            execute!(stdout, cursor::MoveUp(frame.len() as u16))?;
-        }
+        // Move up to top of egg block (6 egg lines + 1 label)
+        execute!(stdout, cursor::MoveUp(EGG_BLOCK_HEIGHT))?;
         for line in frame {
             execute!(stdout, cursor::MoveToColumn(0))?;
             write!(stdout, "  {}", line)?;
             execute!(stdout, terminal::Clear(terminal::ClearType::UntilNewLine))?;
             writeln!(stdout)?;
         }
+        // Skip past the label line
+        execute!(stdout, cursor::MoveDown(1))?;
         stdout.flush()?;
-        let delay = if i < egg_timing.len() { egg_timing[i] } else { 400 };
+        let delay = egg_timing[i + 1];
         thread::sleep(Duration::from_millis(delay));
     }
 
-    // Brief pause
-    thread::sleep(Duration::from_millis(200));
+    thread::sleep(Duration::from_millis(150));
 
-    // Phase 2: Companion appears!
+    // Replace egg with companion sprite
     let sprite_lines = render::render_sprite(companion, 0);
+
+    // Move up to overwrite the egg + label
+    execute!(stdout, cursor::MoveUp(EGG_BLOCK_HEIGHT))?;
+
     // Clear the egg area
-    execute!(stdout, cursor::MoveUp(EGG_FRAMES[0].len() as u16))?;
-    for _ in 0..EGG_FRAMES[0].len() {
+    for _ in 0..EGG_BLOCK_HEIGHT {
         execute!(stdout, cursor::MoveToColumn(0))?;
         execute!(stdout, terminal::Clear(terminal::ClearType::CurrentLine))?;
         writeln!(stdout)?;
     }
-    execute!(stdout, cursor::MoveUp(EGG_FRAMES[0].len() as u16))?;
+    execute!(stdout, cursor::MoveUp(EGG_BLOCK_HEIGHT))?;
 
-    // Draw companion with a sparkle effect
+    // Draw companion with sparkles
     for line in &sprite_lines {
         execute!(stdout, cursor::MoveToColumn(0))?;
         write!(stdout, "  ✨ {}", line)?;
@@ -174,7 +185,7 @@ pub fn play_hatch(companion: &Companion) -> io::Result<()> {
         writeln!(stdout)?;
     }
     stdout.flush()?;
-    thread::sleep(Duration::from_millis(600));
+    thread::sleep(Duration::from_millis(500));
 
     // Redraw without sparkles
     execute!(stdout, cursor::MoveUp(sprite_lines.len() as u16))?;
@@ -186,9 +197,8 @@ pub fn play_hatch(companion: &Companion) -> io::Result<()> {
     }
     stdout.flush()?;
 
-    // Phase 3: Quick idle animation to show it's alive
-    thread::sleep(Duration::from_millis(300));
-    for tick in 0..8 {
+    // Quick idle animation (3 ticks — fast)
+    for tick in 0..3 {
         let seq_idx = tick % IDLE_SEQUENCE.len();
         let frame_code = IDLE_SEQUENCE[seq_idx];
 
@@ -209,5 +219,6 @@ pub fn play_hatch(companion: &Companion) -> io::Result<()> {
         thread::sleep(Duration::from_millis(TICK_MS));
     }
 
+    // Cursor is now right below the companion — ready for title animation
     Ok(())
 }
