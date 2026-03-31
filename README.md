@@ -1,12 +1,4 @@
 <p align="center">
-  <br>
-  <img src="https://img.shields.io/github/v/release/coffecup25/clawdshell?color=D97757&label=version&style=flat-square" alt="version">
-  <img src="https://img.shields.io/github/actions/workflow/status/coffecup25/clawdshell/release.yml?style=flat-square&color=D97757" alt="build">
-  <img src="https://img.shields.io/badge/platforms-macOS%20%7C%20Linux%20%7C%20Windows-D97757?style=flat-square" alt="platforms">
-  <img src="https://img.shields.io/github/license/coffecup25/clawdshell?style=flat-square&color=D97757" alt="license">
-</p>
-
-<p align="center">
   <img src="assets/banner.png" alt="clawdshell" width="700">
 </p>
 
