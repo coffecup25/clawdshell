@@ -109,7 +109,14 @@ fn main() {
     let command_override = tool_config.and_then(|tc| tc.command.as_deref());
     let tool_path = clawdshell::detect::resolve_tool_binary(&tool_name, command_override);
 
-    // No artificial delay — launch the tool as fast as possible
+    // Show greeting on alternate screen — no sleep, tool launches right after
+    if config.companion.enabled {
+        let width = terminal::size().map(|(w, _)| w).unwrap_or(80);
+        let _ = crossterm::execute!(std::io::stdout(), terminal::EnterAlternateScreen);
+        print!("{}", clawdshell::greeting::render_greeting(&tool_name, &shell, &companion, width));
+        let _ = std::io::Write::flush(&mut std::io::stdout());
+        let _ = crossterm::execute!(std::io::stdout(), terminal::LeaveAlternateScreen);
+    }
 
     clawdshell::shell::setup_signal_forwarding();
 
