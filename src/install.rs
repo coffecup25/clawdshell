@@ -40,23 +40,39 @@ fn ensure_claude_code(companion: &Companion) {
         NICE_ORANGE_ANSI, RESET
     );
 
-    // Use the official installer (works on macOS, Linux, WSL)
-    let mut child = match Command::new("bash")
+    // Use the official installer for the current platform
+    #[cfg(unix)]
+    let install_result = Command::new("bash")
         .args(["-c", "curl -fsSL https://claude.ai/install.sh | bash"])
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
-        .spawn()
-    {
+        .spawn();
+
+    #[cfg(windows)]
+    let install_result = Command::new("powershell")
+        .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command",
+               "irm https://claude.ai/install.ps1 | iex"])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn();
+
+    let mut child = match install_result {
         Ok(c) => c,
         Err(_) => {
-            // Fallback: try npm if bash/curl not available
+            // Fallback: try npm if primary installer not available
             if which::which("npm").is_err() {
                 println!(
                     "  {}✗{} Could not install Claude Code automatically.",
                     YELLOW, RESET
                 );
+                #[cfg(unix)]
                 println!(
                     "    Install manually: {}curl -fsSL https://claude.ai/install.sh | bash{}\n",
+                    DIM, RESET
+                );
+                #[cfg(windows)]
+                println!(
+                    "    Install manually: {}irm https://claude.ai/install.ps1 | iex{}\n",
                     DIM, RESET
                 );
                 return;
@@ -200,8 +216,14 @@ fn ensure_claude_code(companion: &Companion) {
                 "  {}✗{} Failed to install Claude Code. Try manually:",
                 RED, RESET
             );
+            #[cfg(unix)]
             println!(
                 "    {}curl -fsSL https://claude.ai/install.sh | bash{}\n",
+                DIM, RESET
+            );
+            #[cfg(windows)]
+            println!(
+                "    {}irm https://claude.ai/install.ps1 | iex{}\n",
                 DIM, RESET
             );
         }
@@ -863,7 +885,7 @@ fn unix_install(exe_path: &str) -> bool {
     }
 
     // Run chsh
-    match Command::new("chsh").args(["-s", exe_path]).status() {
+    let chsh_ok = match Command::new("chsh").args(["-s", exe_path]).status() {
         Ok(s) if s.success() => {
             println!("  {}✓{} Login shell changed to clawdshell", NICE_ORANGE_ANSI, RESET);
             true
@@ -874,6 +896,79 @@ fn unix_install(exe_path: &str) -> bool {
                 YELLOW, RESET, exe_path
             );
             false
+        }
+    };
+
+    // On macOS, ensure Terminal.app uses the login shell (not a hardcoded command).
+    // Without this, Terminal.app may ignore chsh if its profile has a CommandString override.
+    if chsh_ok && std::path::Path::new("/usr/libexec/PlistBuddy").exists() {
+        configure_macos_terminal();
+    }
+
+    chsh_ok
+}
+
+/// On macOS, set Terminal.app's default profile to use the login shell
+/// instead of a hardcoded command. This makes `chsh` take effect in Terminal.app.
+#[cfg(unix)]
+fn configure_macos_terminal() {
+    let home = match std::env::var("HOME") {
+        Ok(h) => h,
+        Err(_) => return,
+    };
+    let plist = format!("{}/Library/Preferences/com.apple.Terminal.plist", home);
+    if !std::path::Path::new(&plist).exists() {
+        return; // Terminal.app not configured / not macOS
+    }
+
+    // Get the default profile name (e.g. "Basic", "Pro", etc.)
+    let profile_name = Command::new("defaults")
+        .args(["read", "com.apple.Terminal", "Default Window Settings"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .unwrap_or_else(|| "Basic".to_string());
+
+    // Set CommandIsShell = true so Terminal.app uses the login shell
+    let key = format!("Set ':Window Settings:{}:CommandIsShell' true", profile_name);
+    let ok = Command::new("/usr/libexec/PlistBuddy")
+        .args(["-c", &key, &plist])
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+
+    if ok {
+        // Remove any CommandString override that would bypass the login shell
+        let del_key = format!("Delete ':Window Settings:{}:CommandString'", profile_name);
+        let _ = Command::new("/usr/libexec/PlistBuddy")
+            .args(["-c", &del_key, &plist])
+            .output();
+
+        println!(
+            "  {}✓{} Configured Terminal.app to use login shell",
+            NICE_ORANGE_ANSI, RESET
+        );
+    }
+
+    // Also handle Startup Window Settings profile if different
+    let startup_name = Command::new("defaults")
+        .args(["read", "com.apple.Terminal", "Startup Window Settings"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string());
+
+    if let Some(startup) = startup_name {
+        if startup != profile_name {
+            let key = format!("Set ':Window Settings:{}:CommandIsShell' true", startup);
+            let _ = Command::new("/usr/libexec/PlistBuddy")
+                .args(["-c", &key, &plist])
+                .output();
+            let del_key = format!("Delete ':Window Settings:{}:CommandString'", startup);
+            let _ = Command::new("/usr/libexec/PlistBuddy")
+                .args(["-c", &del_key, &plist])
+                .output();
         }
     }
 }
@@ -901,30 +996,91 @@ fn unix_uninstall(exe_path: &str, fallback: &str) {
 
 #[cfg(windows)]
 fn windows_install(exe_path: &str) -> bool {
-    println!("  Windows Terminal setup:");
-    if let Some(settings_path) = find_windows_terminal_settings() {
-        println!("  Found: {}", settings_path.display());
-        let add = Confirm::new()
-            .with_prompt("  Add clawdshell profile?")
-            .default(true)
-            .interact()
-            .unwrap_or(false);
-        if add {
-            println!("  Profile addition not yet implemented. Add manually:");
+    // Use Windows Terminal Fragments to register profile automatically.
+    // Fragments are the official way for apps to add profiles without modifying
+    // the user's settings.json. Supported since Windows Terminal 1.11+.
+    // https://learn.microsoft.com/en-us/windows/terminal/json-fragment-extensions
+    let local_app_data = match std::env::var("LOCALAPPDATA") {
+        Ok(v) => v,
+        Err(_) => {
+            println!(
+                "  {}✗{} LOCALAPPDATA not set — cannot register profile",
+                YELLOW, RESET
+            );
+            return false;
         }
-    } else {
-        println!("  Windows Terminal not found.");
-    }
-    println!(
-        "  Manual setup: Add {} as a profile in your terminal.",
-        exe_path
+    };
+
+    // Escape backslashes for JSON
+    let exe_json = exe_path.replace('\\', "\\\\");
+    let fragment_json = format!(
+        "{{\n    \"profiles\": [\n        {{\n            \"name\": \"clawdshell\",\n            \"commandline\": \"{}\",\n            \"startingDirectory\": \"%USERPROFILE%\",\n            \"hidden\": false\n        }}\n    ]\n}}",
+        exe_json
     );
-    true
+
+    let mut registered = false;
+
+    // Register fragment for Windows Terminal (stable)
+    let wt_fragment_dir = std::path::PathBuf::from(&local_app_data)
+        .join("Microsoft")
+        .join("Windows Terminal")
+        .join("Fragments")
+        .join("clawdshell");
+
+    if std::fs::create_dir_all(&wt_fragment_dir).is_ok() {
+        if std::fs::write(wt_fragment_dir.join("profile.json"), &fragment_json).is_ok() {
+            println!(
+                "  {}✓{} Registered clawdshell profile (Windows Terminal)",
+                NICE_ORANGE_ANSI, RESET
+            );
+            registered = true;
+        }
+    }
+
+    // Also register for Windows Terminal Preview
+    let preview_fragment_dir = std::path::PathBuf::from(&local_app_data)
+        .join("Microsoft")
+        .join("Windows Terminal Preview")
+        .join("Fragments")
+        .join("clawdshell");
+
+    if std::fs::create_dir_all(&preview_fragment_dir).is_ok() {
+        let _ = std::fs::write(preview_fragment_dir.join("profile.json"), &fragment_json);
+    }
+
+    if !registered {
+        println!(
+            "  {}✗{} Could not register profile fragment",
+            YELLOW, RESET
+        );
+    }
+
+    registered
 }
 
 #[cfg(windows)]
 fn windows_uninstall() {
-    println!("  Remove the clawdshell profile from Windows Terminal manually.");
+    if let Ok(local) = std::env::var("LOCALAPPDATA") {
+        let dirs = [
+            std::path::PathBuf::from(&local)
+                .join("Microsoft")
+                .join("Windows Terminal")
+                .join("Fragments")
+                .join("clawdshell"),
+            std::path::PathBuf::from(&local)
+                .join("Microsoft")
+                .join("Windows Terminal Preview")
+                .join("Fragments")
+                .join("clawdshell"),
+        ];
+        for dir in &dirs {
+            let _ = std::fs::remove_dir_all(dir);
+        }
+        println!(
+            "  {}✓{} Removed clawdshell profile fragments",
+            NICE_ORANGE_ANSI, RESET
+        );
+    }
 }
 
 #[cfg(windows)]
